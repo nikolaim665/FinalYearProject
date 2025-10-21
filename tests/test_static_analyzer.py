@@ -10,7 +10,7 @@ from pathlib import Path
 backend_path = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(backend_path))
 
-from analyzers.static_analyzer import StaticAnalyzer
+from analyzers.static_analyzer import StaticAnalyzer, analyze_code
 
 
 class TestStaticAnalyzer(unittest.TestCase):
