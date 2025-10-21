@@ -154,21 +154,33 @@ Students often produce code that works but don't fully comprehend it. This syste
    - Robust error handling
    - Fully tested with 26 unit tests
 
-### 🎯 Core System Complete
+5. **REST API** (`backend/api/`)
+   - FastAPI-based REST API
+   - Comprehensive Pydantic models for validation
+   - Full CRUD endpoints for code submissions and answers
+   - Interactive API documentation (Swagger/ReDoc)
+   - CORS enabled for frontend integration
+   - Robust error handling and validation
+   - Fully tested with 18 unit tests
+   - Production-ready architecture
 
-The complete question generation pipeline is now operational:
+### 🎯 Core System Complete!
+
+The complete QLC system is now operational:
 
 - ✅ Code Analysis (Static + Dynamic)
 - ✅ Question Template System
 - ✅ Question Generation & Selection
-- ✅ 86 passing tests
+- ✅ REST API with Full Documentation
+- ✅ 104 passing tests
+- ✅ CI/CD Pipeline
 - ✅ Complete demos available
 
 ### 🚧 Next Steps
 
-1. **Flask/FastAPI Backend** - REST API for code submission
-2. **Database Models** - Store submissions, questions, and answers
-3. **React Frontend** - Interactive UI with code editor
+1. **Database Integration** - Add SQLite/PostgreSQL for persistence
+2. **React Frontend** - Interactive UI with code editor
+3. **OpenAI Integration** - Enhanced question generation and answer grading
 4. **Answer Assessment** - Grade student responses
 5. **OpenAI Integration** - Enhanced question generation and grading
 
@@ -209,6 +221,19 @@ pip install -r requirements.txt
 cd frontend
 npm install
 ```
+
+### Running the API
+
+Start the REST API server:
+
+```bash
+python run_api.py
+```
+
+Then access:
+- **API**: http://localhost:8000
+- **Interactive Docs (Swagger)**: http://localhost:8000/docs
+- **Alternative Docs (ReDoc)**: http://localhost:8000/redoc
 
 ### Running Demos
 
