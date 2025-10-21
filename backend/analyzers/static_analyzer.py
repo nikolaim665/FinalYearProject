@@ -6,13 +6,14 @@ Extracts structural information using AST (Abstract Syntax Tree).
 """
 
 import ast
-from typing import Dict, List, Any, Set
+from typing import Dict, List, Any, Set, Optional
 from dataclasses import dataclass, field
 
 
 @dataclass
 class FunctionInfo:
     """Information about a function definition."""
+
     name: str
     params: List[str]
     line_start: int
@@ -27,6 +28,7 @@ class FunctionInfo:
 @dataclass
 class VariableInfo:
     """Information about a variable."""
+
     name: str
     line: int
     scope: str  # 'global' or function name
@@ -35,16 +37,18 @@ class VariableInfo:
 @dataclass
 class LoopInfo:
     """Information about a loop."""
+
     type: str  # 'for' or 'while'
     line_start: int
     line_end: int
-    loop_variable: str = None  # For 'for' loops
+    loop_variable: Optional[str] = None  # For 'for' loops
     nesting_level: int = 0
 
 
 @dataclass
 class ConditionalInfo:
     """Information about an if statement."""
+
     type: str  # 'if'
     line: int
     has_elif: bool = False
@@ -54,6 +58,7 @@ class ConditionalInfo:
 @dataclass
 class FunctionCallInfo:
     """Information about a function call."""
+
     function: str
     line: int
     arguments_count: int
@@ -91,7 +96,7 @@ class CodeVisitor(ast.NodeVisitor):
             name=node.name,
             params=params,
             line_start=node.lineno,
-            line_end=node.end_lineno if hasattr(node, 'end_lineno') else node.lineno
+            line_end=node.end_lineno if hasattr(node, "end_lineno") else node.lineno,
         )
 
         # Set current function context
@@ -130,15 +135,11 @@ class CodeVisitor(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign):
         """Visit an assignment statement to track variables."""
-        scope = self.current_function if self.current_function else 'global'
+        scope = self.current_function if self.current_function else "global"
 
         for target in node.targets:
             if isinstance(target, ast.Name):
-                var_info = VariableInfo(
-                    name=target.id,
-                    line=node.lineno,
-                    scope=scope
-                )
+                var_info = VariableInfo(name=target.id, line=node.lineno, scope=scope)
                 self.variables.append(var_info)
 
         self.generic_visit(node)
@@ -150,11 +151,11 @@ class CodeVisitor(ast.NodeVisitor):
             loop_var = node.target.id
 
         loop_info = LoopInfo(
-            type='for',
+            type="for",
             line_start=node.lineno,
-            line_end=node.end_lineno if hasattr(node, 'end_lineno') else node.lineno,
+            line_end=node.end_lineno if hasattr(node, "end_lineno") else node.lineno,
             loop_variable=loop_var,
-            nesting_level=self.loop_depth
+            nesting_level=self.loop_depth,
         )
         self.loops.append(loop_info)
 
@@ -166,10 +167,10 @@ class CodeVisitor(ast.NodeVisitor):
     def visit_While(self, node: ast.While):
         """Visit a while loop."""
         loop_info = LoopInfo(
-            type='while',
+            type="while",
             line_start=node.lineno,
-            line_end=node.end_lineno if hasattr(node, 'end_lineno') else node.lineno,
-            nesting_level=self.loop_depth
+            line_end=node.end_lineno if hasattr(node, "end_lineno") else node.lineno,
+            nesting_level=self.loop_depth,
         )
         self.loops.append(loop_info)
 
@@ -191,10 +192,7 @@ class CodeVisitor(ast.NodeVisitor):
                 has_else = True
 
         cond_info = ConditionalInfo(
-            type='if',
-            line=node.lineno,
-            has_elif=has_elif,
-            has_else=has_else
+            type="if", line=node.lineno, has_elif=has_elif, has_else=has_else
         )
         self.conditionals.append(cond_info)
 
@@ -211,9 +209,7 @@ class CodeVisitor(ast.NodeVisitor):
 
         if func_name:
             call_info = FunctionCallInfo(
-                function=func_name,
-                line=node.lineno,
-                arguments_count=len(node.args)
+                function=func_name, line=node.lineno, arguments_count=len(node.args)
             )
             self.function_calls.append(call_info)
 
@@ -244,7 +240,7 @@ class StaticAnalyzer:
             tree = ast.parse(source_code)
 
             # Split source into lines for reference
-            source_lines = source_code.split('\n')
+            source_lines = source_code.split("\n")
 
             # Create visitor and walk the tree
             visitor = CodeVisitor(source_lines)
@@ -252,19 +248,23 @@ class StaticAnalyzer:
 
             # Compile results
             results = {
-                'functions': [self._function_to_dict(f) for f in visitor.functions],
-                'variables': [self._variable_to_dict(v) for v in visitor.variables],
-                'loops': [self._loop_to_dict(l) for l in visitor.loops],
-                'conditionals': [self._conditional_to_dict(c) for c in visitor.conditionals],
-                'function_calls': [self._call_to_dict(c) for c in visitor.function_calls],
-                'summary': {
-                    'total_functions': len(visitor.functions),
-                    'total_variables': len(visitor.variables),
-                    'total_loops': len(visitor.loops),
-                    'total_conditionals': len(visitor.conditionals),
-                    'has_recursion': any(f.is_recursive for f in visitor.functions),
-                    'total_lines': len(source_lines)
-                }
+                "functions": [self._function_to_dict(f) for f in visitor.functions],
+                "variables": [self._variable_to_dict(v) for v in visitor.variables],
+                "loops": [self._loop_to_dict(l) for l in visitor.loops],
+                "conditionals": [
+                    self._conditional_to_dict(c) for c in visitor.conditionals
+                ],
+                "function_calls": [
+                    self._call_to_dict(c) for c in visitor.function_calls
+                ],
+                "summary": {
+                    "total_functions": len(visitor.functions),
+                    "total_variables": len(visitor.variables),
+                    "total_loops": len(visitor.loops),
+                    "total_conditionals": len(visitor.conditionals),
+                    "has_recursion": any(f.is_recursive for f in visitor.functions),
+                    "total_lines": len(source_lines),
+                },
             }
 
             return results
@@ -276,55 +276,51 @@ class StaticAnalyzer:
     def _function_to_dict(func: FunctionInfo) -> Dict:
         """Convert FunctionInfo to dictionary."""
         return {
-            'name': func.name,
-            'params': func.params,
-            'param_count': len(func.params),
-            'line_start': func.line_start,
-            'line_end': func.line_end,
-            'is_recursive': func.is_recursive,
-            'has_conditionals': func.has_conditionals,
-            'has_loops': func.has_loops,
-            'return_count': func.return_count,
-            'calls_functions': func.calls_functions
+            "name": func.name,
+            "params": func.params,
+            "param_count": len(func.params),
+            "line_start": func.line_start,
+            "line_end": func.line_end,
+            "is_recursive": func.is_recursive,
+            "has_conditionals": func.has_conditionals,
+            "has_loops": func.has_loops,
+            "return_count": func.return_count,
+            "calls_functions": func.calls_functions,
         }
 
     @staticmethod
     def _variable_to_dict(var: VariableInfo) -> Dict:
         """Convert VariableInfo to dictionary."""
-        return {
-            'name': var.name,
-            'line': var.line,
-            'scope': var.scope
-        }
+        return {"name": var.name, "line": var.line, "scope": var.scope}
 
     @staticmethod
     def _loop_to_dict(loop: LoopInfo) -> Dict:
         """Convert LoopInfo to dictionary."""
         return {
-            'type': loop.type,
-            'line_start': loop.line_start,
-            'line_end': loop.line_end,
-            'loop_variable': loop.loop_variable,
-            'nesting_level': loop.nesting_level
+            "type": loop.type,
+            "line_start": loop.line_start,
+            "line_end": loop.line_end,
+            "loop_variable": loop.loop_variable,
+            "nesting_level": loop.nesting_level,
         }
 
     @staticmethod
     def _conditional_to_dict(cond: ConditionalInfo) -> Dict:
         """Convert ConditionalInfo to dictionary."""
         return {
-            'type': cond.type,
-            'line': cond.line,
-            'has_elif': cond.has_elif,
-            'has_else': cond.has_else
+            "type": cond.type,
+            "line": cond.line,
+            "has_elif": cond.has_elif,
+            "has_else": cond.has_else,
         }
 
     @staticmethod
     def _call_to_dict(call: FunctionCallInfo) -> Dict:
         """Convert FunctionCallInfo to dictionary."""
         return {
-            'function': call.function,
-            'line': call.line,
-            'arguments_count': call.arguments_count
+            "function": call.function,
+            "line": call.line,
+            "arguments_count": call.arguments_count,
         }
 
 

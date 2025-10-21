@@ -1,5 +1,10 @@
 # Questions about Learners' Code (QLC) System
 
+[![CI](https://github.com/nikolaim665/FinalYearProject/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolaim665/FinalYearProject/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A Final Year Project implementing an automated system for generating and presenting questions about student-written code to enhance program comprehension and assessment.
 
 ## Project Overview
@@ -74,172 +79,6 @@ Students often produce code that works but don't fully comprehend it. This syste
 - **SQLite** (development) / **PostgreSQL** (production)
 - Store submissions, questions, and student responses
 
-## Implementation Roadmap
-
-### Phase 1: Core Analysis Engine (Weeks 1-4)
-
-#### Step 1.1: Static Code Analyzer
-
-- [ ] Set up Python AST parser
-- [ ] Extract basic facts:
-  - [ ] Variable declarations and names
-  - [ ] Function definitions and signatures
-  - [ ] Loop structures (for, while) with line numbers
-  - [ ] Conditional statements (if/else)
-  - [ ] Identify recursive functions
-- [ ] Create data structure for static facts
-- [ ] Unit tests for analyzer
-
-#### Step 1.2: Dynamic Code Analyzer
-
-- [ ] Implement safe code execution sandbox
-- [ ] Execute with test cases
-- [ ] Collect runtime facts:
-  - [ ] Variable values at specific execution points
-  - [ ] Call stack depth tracking
-  - [ ] Loop iteration counts
-  - [ ] Execution flow sequence
-- [ ] Handle errors gracefully
-- [ ] Unit tests for execution engine
-
-#### Step 1.3: Question Template System
-
-- [ ] Design template data structure
-- [ ] Implement Block Model levels (Atom, Block, Relational, Macro)
-- [ ] Create initial template set:
-  - [ ] 5 atom-level templates (simple facts)
-  - [ ] 5 block-level templates (code sections)
-  - [ ] 3 relational templates (connections)
-  - [ ] 2 macro templates (whole program)
-- [ ] Template matching algorithm
-- [ ] Answer generation logic
-
-#### Step 1.4: Question Engine
-
-- [ ] Template selection algorithm
-- [ ] Placeholder replacement system
-- [ ] Question instantiation
-- [ ] Answer verification system
-- [ ] Randomization and variety control
-
-### Phase 2: Web Interface (Weeks 5-6)
-
-#### Step 2.1: Backend API
-
-- [ ] Set up Flask/FastAPI project structure
-- [ ] Create endpoints:
-  - [ ] `POST /api/submit`: Submit code
-  - [ ] `POST /api/analyze`: Trigger analysis
-  - [ ] `GET /api/questions/:submission_id`: Get questions
-  - [ ] `POST /api/answer`: Submit answer
-  - [ ] `GET /api/feedback/:answer_id`: Get feedback
-- [ ] Integrate analysis engine
-- [ ] Database models and migrations
-- [ ] API documentation
-
-#### Step 2.2: Frontend - Code Input Panel
-
-- [ ] Initialize React app
-- [ ] Set up routing
-- [ ] Implement Monaco Editor
-- [ ] Code submission form
-- [ ] Syntax highlighting for Python
-- [ ] Loading states and error handling
-
-#### Step 2.3: Frontend - QLC Display Panel
-
-- [ ] Split-panel layout
-- [ ] Question rendering component
-- [ ] Answer input forms:
-  - [ ] Multiple choice
-  - [ ] Single value (text/number)
-  - [ ] Open-ended text
-- [ ] Submit answer functionality
-- [ ] Feedback display
-- [ ] Progress tracking
-
-#### Step 2.4: Integration
-
-- [ ] Connect frontend to backend API
-- [ ] State management (Context API/Redux)
-- [ ] Real-time updates
-- [ ] Session management
-- [ ] Error handling and user feedback
-
-### Phase 3: OpenAI Integration (Weeks 7-8)
-
-#### Step 3.1: Question Enhancement
-
-- [ ] Set up OpenAI API client
-- [ ] Implement question rephrasing
-- [ ] Natural language generation for questions
-- [ ] Context-aware question formulation
-- [ ] A/B testing template vs AI questions
-
-#### Step 3.2: Open-Ended Answer Assessment
-
-- [ ] Prompt engineering for answer grading
-- [ ] Semantic similarity comparison
-- [ ] Partial credit assignment
-- [ ] Feedback generation
-- [ ] Confidence scoring
-
-#### Step 3.3: Advanced Question Generation
-
-- [ ] "Explain the purpose" questions
-- [ ] "What-if" scenario questions
-- [ ] Design decision questions
-- [ ] Code comparison questions
-
-### Phase 4: Testing & Refinement (Weeks 9-10)
-
-#### Step 4.1: Unit & Integration Testing
-
-- [ ] Backend test coverage >80%
-- [ ] Frontend component tests
-- [ ] End-to-end tests with Cypress/Playwright
-- [ ] API contract tests
-
-#### Step 4.2: User Testing
-
-- [ ] Pilot study with 10-15 students
-- [ ] Collect feedback on:
-  - [ ] Question clarity
-  - [ ] Interface usability
-  - [ ] Question difficulty
-  - [ ] Learning value
-- [ ] Iterate based on feedback
-
-#### Step 4.3: Documentation
-
-- [ ] API documentation
-- [ ] User guide
-- [ ] Teacher configuration guide
-- [ ] Template creation guide
-- [ ] Deployment guide
-
-### Phase 5: Deployment & Evaluation (Weeks 11-12)
-
-#### Step 5.1: Deployment
-
-- [ ] Set up production environment
-- [ ] Configure CI/CD pipeline
-- [ ] Deploy backend (Heroku/AWS/GCP)
-- [ ] Deploy frontend (Vercel/Netlify)
-- [ ] Set up monitoring and logging
-
-#### Step 5.2: Evaluation Study
-
-- [ ] Define research questions
-- [ ] Recruit participants
-- [ ] Collect data:
-  - [ ] Student responses to QLCs
-  - [ ] Comprehension scores
-  - [ ] User experience surveys
-  - [ ] Learning outcomes
-- [ ] Analyze results
-- [ ] Write final report
-
 ## Question Types (Block Model)
 
 ### Atom Level (Language Elements)
@@ -279,13 +118,67 @@ Students often produce code that works but don't fully comprehend it. This syste
    - Question: "How many iterations does the loop starting on line {n} perform?"
    - Answer: Auto-generated from dynamic analysis
 
+## Current Implementation Status
+
+### ✅ Completed Components
+
+1. **Static Analyzer** (`backend/analyzers/static_analyzer.py`)
+   - AST-based code analysis
+   - Extracts functions, variables, loops, conditionals
+   - Detects recursive functions
+   - Fully tested
+
+2. **Dynamic Analyzer** (`backend/analyzers/dynamic_analyzer.py`)
+   - Execution tracing using `sys.settrace()`
+   - Captures variable values at runtime
+   - Counts loop iterations
+   - Tracks function calls and stack depth
+   - Fully tested
+
+3. **Question Template System** (`backend/question_engine/templates.py`)
+   - Template registry and matching system
+   - 3 initial templates implemented:
+     - Recursive function detection (BLOCK level)
+     - Variable value tracing (ATOM level)
+     - Loop iteration counting (BLOCK level)
+   - Support for multiple question types and difficulty levels
+   - Fully tested with 25 unit tests
+
+4. **Question Generator** (`backend/question_engine/generator.py`)
+   - Complete end-to-end pipeline orchestration
+   - Combines static and dynamic analysis
+   - Flexible configuration system
+   - Multiple selection strategies (Diverse, Focused, All, Adaptive)
+   - Advanced filtering and deduplication
+   - JSON serialization for API integration
+   - Robust error handling
+   - Fully tested with 26 unit tests
+
+### 🎯 Core System Complete
+
+The complete question generation pipeline is now operational:
+
+- ✅ Code Analysis (Static + Dynamic)
+- ✅ Question Template System
+- ✅ Question Generation & Selection
+- ✅ 86 passing tests
+- ✅ Complete demos available
+
+### 🚧 Next Steps
+
+1. **Flask/FastAPI Backend** - REST API for code submission
+2. **Database Models** - Store submissions, questions, and answers
+3. **React Frontend** - Interactive UI with code editor
+4. **Answer Assessment** - Grade student responses
+5. **OpenAI Integration** - Enhanced question generation and grading
+
 ## Getting Started
 
 ### Prerequisites
 
 ```bash
 python --version  # Python 3.14+
-node --version    # Node 16+
+node --version    # Node 16+ (for frontend, when implemented)
 ```
 
 ### Installation
@@ -310,12 +203,44 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Install frontend dependencies:
+4. (Optional) Install frontend dependencies when frontend is implemented:
 
 ```bash
 cd frontend
 npm install
 ```
+
+### Running Demos
+
+Try out the implemented components:
+
+```bash
+# Demo: Static Analyzer
+python demo_static_analyzer.py
+
+# Demo: Dynamic Analyzer
+python demo_dynamic_analyzer.py
+
+# Demo: Question Template System
+python demo_question_templates.py
+
+# Demo: Complete Pipeline (Question Generator)
+python demo_question_generator.py
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test files
+python -m pytest tests/test_static_analyzer.py -v
+python -m pytest tests/test_dynamic_analyzer.py -v
+python -m pytest tests/test_question_templates.py -v
+```
+
+### Environment Setup (for future OpenAI integration)
 
 5. Set up environment variables:
 

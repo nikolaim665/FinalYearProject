@@ -1,2 +1,6 @@
+# Core dependencies
 openai
 
+# Testing
+pytest>=8.0.0
+pytest-cov>=4.1.0
