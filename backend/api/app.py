@@ -16,8 +16,9 @@ from pathlib import Path
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from api.routes import router
+from api.routes_db import router  # Use database-enabled routes
 from api.models import ErrorResponse
+from database import init_db
 
 # Create FastAPI app
 app = FastAPI(
@@ -143,6 +144,9 @@ async def startup_event():
     print("QLC API - Questions about Learners' Code")
     print("=" * 80)
     print("API is starting up...")
+    print("Initializing database...")
+    await init_db()
+    print("Database initialized successfully!")
     print("Docs available at: http://localhost:8000/docs")
     print("=" * 80)
 

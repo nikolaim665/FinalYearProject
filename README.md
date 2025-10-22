@@ -164,6 +164,16 @@ Students often produce code that works but don't fully comprehend it. This syste
    - Fully tested with 18 unit tests
    - Production-ready architecture
 
+6. **Database Layer** (`backend/database/`)
+   - SQLAlchemy ORM with async support
+   - SQLite for development, PostgreSQL-ready for production
+   - Complete database schema with 3 main models
+   - Alembic migrations for version control
+   - Comprehensive CRUD operations
+   - Cascade deletion for data integrity
+   - JSON field support for complex data
+   - Fully tested with 10 unit tests
+
 ### 🎯 Core System Complete!
 
 The complete QLC system is now operational:
@@ -172,17 +182,20 @@ The complete QLC system is now operational:
 - ✅ Question Template System
 - ✅ Question Generation & Selection
 - ✅ REST API with Full Documentation
-- ✅ 104 passing tests
+- ✅ **Database Integration with SQLAlchemy**
+- ✅ **Persistent Storage for Submissions, Questions, and Answers**
+- ✅ **Database Migrations with Alembic**
+- ✅ 114 passing tests (including 10 database tests)
 - ✅ CI/CD Pipeline
 - ✅ Complete demos available
 
 ### 🚧 Next Steps
 
-1. **Database Integration** - Add SQLite/PostgreSQL for persistence
-2. **React Frontend** - Interactive UI with code editor
-3. **OpenAI Integration** - Enhanced question generation and answer grading
-4. **Answer Assessment** - Grade student responses
-5. **OpenAI Integration** - Enhanced question generation and grading
+1. **React Frontend** - Interactive UI with code editor
+2. **OpenAI Integration** - Enhanced question generation and answer grading
+3. **User Authentication** - Student and teacher accounts
+4. **Analytics Dashboard** - Track student progress and comprehension
+5. **Advanced Question Types** - Code completion, debugging challenges
 
 ## Getting Started
 
@@ -224,16 +237,34 @@ npm install
 
 ### Running the API
 
-Start the REST API server:
+Start the REST API server (with database):
 
 ```bash
 python run_api.py
 ```
 
+The server will:
+1. Initialize the database on startup
+2. Create tables if they don't exist
+3. Start accepting requests
+
 Then access:
 - **API**: http://localhost:8000
 - **Interactive Docs (Swagger)**: http://localhost:8000/docs
 - **Alternative Docs (ReDoc)**: http://localhost:8000/redoc
+
+### Database Management
+
+```bash
+# Apply database migrations
+alembic upgrade head
+
+# Create a new migration after model changes
+alembic revision --autogenerate -m "description"
+
+# Rollback last migration
+alembic downgrade -1
+```
 
 ### Running Demos
 
@@ -256,13 +287,17 @@ python demo_question_generator.py
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (including database tests)
 python -m pytest tests/ -v
 
 # Run specific test files
 python -m pytest tests/test_static_analyzer.py -v
 python -m pytest tests/test_dynamic_analyzer.py -v
 python -m pytest tests/test_question_templates.py -v
+python -m pytest tests/test_database.py -v  # Database tests
+
+# Run with coverage
+python -m pytest tests/ --cov=backend --cov-report=html
 ```
 
 ### Environment Setup (for future OpenAI integration)

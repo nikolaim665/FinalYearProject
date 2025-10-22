@@ -208,3 +208,7 @@ __marimo__/
 
 CLAUDE.md
 pyrightconfig.json
+
+# Database
+*.db
+qlc_database.db

@@ -183,7 +183,36 @@ class CodeSubmissionResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "submission_id": "sub_abc123",
-                "questions": [],
+                "questions": [
+                    {
+                        "id": "q_xyz789",
+                        "template_id": "recursive_function_detection",
+                        "question_text": "Which of the following functions are recursive (call themselves directly or indirectly)?",
+                        "question_type": "multiple_choice",
+                        "question_level": "block",
+                        "answer_type": "static",
+                        "correct_answer": "factorial",
+                        "answer_choices": [
+                            {
+                                "text": "factorial",
+                                "is_correct": True,
+                                "explanation": "Calls itself"
+                            },
+                            {
+                                "text": "helper",
+                                "is_correct": False,
+                                "explanation": "Does not call itself"
+                            }
+                        ],
+                        "context": {
+                            "total_functions": 2,
+                            "recursive_count": 1,
+                            "function_names": ["factorial", "helper"]
+                        },
+                        "explanation": "The factorial function calls itself on line 4",
+                        "difficulty": "medium"
+                    }
+                ],
                 "metadata": {
                     "total_generated": 8,
                     "total_filtered": 3,

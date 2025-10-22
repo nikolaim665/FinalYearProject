@@ -7,7 +7,12 @@
       "Bash(python3:*)",
       "Bash(mkdir:*)",
       "Bash(pip install:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(alembic init:*)",
+      "Bash(alembic revision:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
