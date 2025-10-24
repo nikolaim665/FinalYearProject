@@ -12,7 +12,16 @@
       "Bash(alembic revision:*)",
       "Bash(alembic upgrade:*)",
       "Bash(timeout 5 python:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd database integration with SQLAlchemy and Alembic\n\nThis commit implements full database persistence for the QLC system.\n\nComponents added:\n- Database models (CodeSubmission, Question, Answer) with relationships\n- Async SQLAlchemy session management with aiosqlite\n- Comprehensive CRUD operations for all models\n- Alembic migrations for schema version control\n- Database-enabled API routes (routes_db.py)\n- 10 new database tests (all passing)\n- Database initialization on application startup\n\nKey features:\n- SQLite for development, PostgreSQL-ready for production\n- Async/await support throughout\n- Cascade deletion for data integrity\n- JSON field support for complex data structures\n- Auto-generated UUIDs for all entities\n- Proper transaction management with commit/rollback\n- Full test coverage for database layer\n\nDatabase schema:\n- code_submissions: Stores code and analysis results\n- questions: Generated questions linked to submissions\n- answers: Student answers with grading and feedback\n\nDocumentation:\n- DATABASE_INTEGRATION.md with complete technical details\n- Updated README.md with database setup and usage\n- Updated requirements.txt with database dependencies\n\nTests: All 114 tests passing (104 existing + 10 new database tests)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(npm create:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(./node_modules/.bin/tailwindcss:*)",
+      "Bash(curl:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []

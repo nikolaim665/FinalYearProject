@@ -189,13 +189,21 @@ The complete QLC system is now operational:
 - ✅ CI/CD Pipeline
 - ✅ Complete demos available
 
+7. **React Frontend** (`frontend/`)
+   - Vite + React 19 application
+   - Monaco code editor for Python
+   - Interactive question answering interface
+   - Real-time feedback and progress tracking
+   - Tailwind CSS for beautiful UI
+   - Fully integrated with FastAPI backend
+
 ### 🚧 Next Steps
 
-1. **React Frontend** - Interactive UI with code editor
-2. **OpenAI Integration** - Enhanced question generation and answer grading
-3. **User Authentication** - Student and teacher accounts
-4. **Analytics Dashboard** - Track student progress and comprehension
-5. **Advanced Question Types** - Code completion, debugging challenges
+1. **OpenAI Integration** - Enhanced question generation and answer grading
+2. **User Authentication** - Student and teacher accounts
+3. **Analytics Dashboard** - Track student progress and comprehension
+4. **Advanced Question Types** - Code completion, debugging challenges
+5. **Deployment** - Production deployment guide
 
 ## Getting Started
 
@@ -203,7 +211,7 @@ The complete QLC system is now operational:
 
 ```bash
 python --version  # Python 3.14+
-node --version    # Node 16+ (for frontend, when implemented)
+node --version    # Node 16+
 ```
 
 ### Installation
@@ -228,11 +236,12 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. (Optional) Install frontend dependencies when frontend is implemented:
+4. Install frontend dependencies:
 
 ```bash
 cd frontend
 npm install
+cd ..
 ```
 
 ### Running the API
@@ -252,6 +261,20 @@ Then access:
 - **API**: http://localhost:8000
 - **Interactive Docs (Swagger)**: http://localhost:8000/docs
 - **Alternative Docs (ReDoc)**: http://localhost:8000/redoc
+
+### Running the Frontend
+
+In a new terminal window:
+
+```bash
+cd frontend
+npm run dev
+```
+
+The frontend will be available at:
+- **Application**: http://localhost:3000
+
+**📖 See [FRONTEND_GUIDE.md](FRONTEND_GUIDE.md) for detailed frontend documentation.**
 
 ### Database Management
 
