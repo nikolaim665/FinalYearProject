@@ -10,7 +10,7 @@ const Header = ({ apiStatus }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="p-2 bg-primary-600 dark:bg-primary-500 rounded-lg transition-colors">
+            <div className="p-2 bg-blue-600 dark:bg-blue-500 rounded-lg transition-colors">
               <Code2 className="w-6 h-6 text-white" />
             </div>
             <div>

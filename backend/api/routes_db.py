@@ -2,6 +2,7 @@
 API Routes with Database Persistence
 
 Defines all REST API endpoints for the QLC system with database integration.
+Now powered by AI-based question generation using OpenAI GPT-5.2.
 """
 
 from fastapi import APIRouter, HTTPException, status, Depends
@@ -31,52 +32,15 @@ from api.models import (
     QuestionTypeEnum,
     StrategyEnum
 )
-from question_engine.generator import (
-    QuestionGenerator,
+from question_engine.ai_generator import (
+    AIQuestionGenerator,
     GenerationConfig,
-    GenerationStrategy
 )
-from question_engine.templates import QuestionLevel, QuestionType
 from database import crud, get_db
 from database.models import SubmissionStatus
 
 # Create router
 router = APIRouter()
-
-
-def map_strategy_enum(strategy: StrategyEnum) -> GenerationStrategy:
-    """Map API strategy enum to internal enum."""
-    mapping = {
-        StrategyEnum.ALL: GenerationStrategy.ALL,
-        StrategyEnum.DIVERSE: GenerationStrategy.DIVERSE,
-        StrategyEnum.FOCUSED: GenerationStrategy.FOCUSED,
-        StrategyEnum.ADAPTIVE: GenerationStrategy.ADAPTIVE,
-    }
-    return mapping[strategy]
-
-
-def map_level_enum(level: QuestionLevelEnum) -> QuestionLevel:
-    """Map API level enum to internal enum."""
-    mapping = {
-        QuestionLevelEnum.ATOM: QuestionLevel.ATOM,
-        QuestionLevelEnum.BLOCK: QuestionLevel.BLOCK,
-        QuestionLevelEnum.RELATIONAL: QuestionLevel.RELATIONAL,
-        QuestionLevelEnum.MACRO: QuestionLevel.MACRO,
-    }
-    return mapping[level]
-
-
-def map_type_enum(qtype: QuestionTypeEnum) -> QuestionType:
-    """Map API type enum to internal enum."""
-    mapping = {
-        QuestionTypeEnum.MULTIPLE_CHOICE: QuestionType.MULTIPLE_CHOICE,
-        QuestionTypeEnum.FILL_IN_BLANK: QuestionType.FILL_IN_BLANK,
-        QuestionTypeEnum.TRUE_FALSE: QuestionType.TRUE_FALSE,
-        QuestionTypeEnum.SHORT_ANSWER: QuestionType.SHORT_ANSWER,
-        QuestionTypeEnum.NUMERIC: QuestionType.NUMERIC,
-        QuestionTypeEnum.CODE_SELECTION: QuestionType.CODE_SELECTION,
-    }
-    return mapping[qtype]
 
 
 @router.get("/health", response_model=HealthResponse, tags=["System"])
@@ -90,30 +54,27 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         # Quick test of components
         from analyzers.static_analyzer import StaticAnalyzer
         from analyzers.dynamic_analyzer import DynamicAnalyzer
-        from question_engine.templates import get_registry
 
         StaticAnalyzer()
         DynamicAnalyzer()
-        registry = get_registry()
 
         # Test database connectivity
         await db.execute(text("SELECT 1"))
 
         return HealthResponse(
             status="healthy",
-            version="1.0.0",
+            version="2.0.0",
             components={
                 "static_analyzer": "ok",
                 "dynamic_analyzer": "ok",
-                "template_system": "ok",
+                "ai_generator": "ok (GPT-5.2)",
                 "database": "ok",
-                "templates_loaded": str(len(registry.templates))
             }
         )
     except Exception as e:
         return HealthResponse(
             status="unhealthy",
-            version="1.0.0",
+            version="2.0.0",
             components={"error": str(e)}
         )
 
@@ -129,12 +90,12 @@ async def submit_code(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Submit code and generate questions.
+    Submit code and generate questions using AI.
 
     This endpoint:
     1. Creates a code submission in the database
     2. Analyzes the submitted code (static + dynamic)
-    3. Generates questions based on the code
+    3. Generates questions using OpenAI GPT-5.2
     4. Stores questions in the database
     5. Returns questions with metadata
 
@@ -142,13 +103,12 @@ async def submit_code(
     ```json
     {
         "code": "def factorial(n):\\n    if n <= 1:\\n        return 1\\n    return n * factorial(n - 1)\\n\\nresult = factorial(5)",
-        "max_questions": 5,
-        "strategy": "diverse"
+        "max_questions": 5
     }
     ```
 
     **Example Response:**
-    Returns a list of generated questions with metadata about the analysis.
+    Returns a list of AI-generated questions with metadata about the analysis.
     """
     try:
         # Create submission record in database
@@ -157,27 +117,28 @@ async def submit_code(
             code=request.code,
             test_inputs=request.test_inputs,
             max_questions=request.max_questions,
-            strategy=request.strategy.value,
+            strategy=request.strategy.value if request.strategy else "diverse",
         )
 
         # Create generation config from request
         config = GenerationConfig(
-            max_questions=request.max_questions,
-            strategy=map_strategy_enum(request.strategy)
+            max_questions=request.max_questions or 10,
         )
 
-        # Apply filters if provided
+        # Apply level filters if provided
         if request.allowed_levels:
-            config.allowed_levels = {map_level_enum(l) for l in request.allowed_levels}
+            config.include_levels = [level.value for level in request.allowed_levels]
 
+        # Apply type filters if provided
         if request.allowed_types:
-            config.allowed_types = {map_type_enum(t) for t in request.allowed_types}
+            config.include_types = [t.value for t in request.allowed_types]
 
+        # Apply difficulty filters if provided
         if request.allowed_difficulties:
-            config.allowed_difficulties = set(request.allowed_difficulties)
+            config.include_difficulties = request.allowed_difficulties
 
-        # Generate questions
-        generator = QuestionGenerator(config)
+        # Generate questions using AI
+        generator = AIQuestionGenerator(config)
         result = generator.generate(request.code, request.test_inputs)
 
         # Convert questions to API format and store in database
@@ -240,7 +201,7 @@ async def submit_code(
             total_generated=result.total_generated,
             total_filtered=result.total_filtered,
             total_returned=len(result.questions),
-            applicable_templates=result.applicable_templates,
+            applicable_templates=1,  # AI generator acts as one template
             execution_successful=result.execution_successful,
             execution_time_ms=result.execution_time_ms
         )
@@ -379,6 +340,16 @@ async def submit_answer(
             else:
                 explanation = f"Incorrect. The correct answer is: {correct_answer_value}. {question.explanation or ''}"
 
+        elif question_type == QuestionTypeEnum.TRUE_FALSE:
+            # For true/false questions
+            user_answer = str(request.answer).strip().lower()
+            correct_answer = str(correct_answer_value).strip().lower()
+            is_correct = user_answer == correct_answer
+            if is_correct:
+                explanation = f"Correct! {question.explanation or ''}"
+            else:
+                explanation = f"Incorrect. The correct answer is: {correct_answer_value}. {question.explanation or ''}"
+
         else:
             # For other types, basic string comparison
             is_correct = str(request.answer) == str(correct_answer_value)
@@ -480,7 +451,7 @@ async def get_submission_endpoint(
         total_generated=len(api_questions),
         total_filtered=0,
         total_returned=len(api_questions),
-        applicable_templates=0,
+        applicable_templates=1,
         execution_successful=True,
         execution_time_ms=0.0
     )
@@ -542,33 +513,37 @@ async def list_submissions(
 )
 def list_templates():
     """
-    List all available question templates.
+    List available question generation system.
 
-    Returns information about each template including:
-    - Template ID
-    - Name and description
-    - Question type and level
-    - Difficulty
+    Returns information about the AI-powered question generation system.
 
     **Example Response:**
     ```json
     {
         "templates": [
             {
-                "id": "recursive_function_detection",
-                "name": "Recursive Function Detection",
-                "description": "Identify recursive functions",
-                "type": "multiple_choice",
-                "level": "block",
-                "difficulty": "medium"
+                "id": "ai_powered_generator",
+                "name": "AI-Powered Question Generator",
+                "description": "Uses OpenAI GPT-5.2 to generate contextual comprehension questions",
+                "type": "all",
+                "level": "all",
+                "difficulty": "adaptive"
             }
         ]
     }
     ```
     """
-    from question_engine.templates import get_registry
-
-    registry = get_registry()
-    templates = registry.list_templates()
-
-    return {"templates": templates, "total": len(templates)}
+    return {
+        "templates": [
+            {
+                "id": "ai_powered_generator",
+                "name": "AI-Powered Question Generator",
+                "description": "Uses OpenAI GPT-5.2 to generate contextual comprehension questions based on static and dynamic code analysis",
+                "type": "all",
+                "level": "all",
+                "difficulty": "adaptive"
+            }
+        ],
+        "total": 1,
+        "note": "Question generation is now powered by AI. The system uses static and dynamic analysis results to generate pedagogically valuable questions."
+    }

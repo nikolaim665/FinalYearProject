@@ -60,7 +60,7 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary-600 rounded-lg">
+              <div className="p-2 bg-blue-600 rounded-lg">
                 <Code2 className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -121,7 +121,7 @@ function App() {
                   href="https://arxiv.org/abs/2103.11138"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary-600 hover:underline"
+                  className="text-blue-600 hover:underline"
                 >
                   "Let's Ask Students About Their Programs, Automatically"
                 </a>{' '}

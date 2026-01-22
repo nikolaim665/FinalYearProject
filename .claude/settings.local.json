@@ -21,7 +21,9 @@
       "Bash(./node_modules/.bin/tailwindcss:*)",
       "Bash(curl:*)",
       "Bash(source .venv/bin/activate)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
