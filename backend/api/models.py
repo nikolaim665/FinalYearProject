@@ -125,6 +125,10 @@ class Question(BaseModel):
     question_level: QuestionLevelEnum
     answer_type: str
     correct_answer: Any
+    alternative_answers: List[str] = Field(
+        default=[],
+        description="Alternative acceptable answers for open-ended questions"
+    )
     answer_choices: List[AnswerChoice] = []
     context: Dict[str, Any] = {}
     explanation: Optional[str] = None
@@ -135,15 +139,13 @@ class Question(BaseModel):
             "example": {
                 "id": "q_123",
                 "template_id": "recursive_function_detection",
-                "question_text": "Which functions are recursive?",
-                "question_type": "multiple_choice",
+                "question_text": "What type of function is factorial?",
+                "question_type": "short_answer",
                 "question_level": "block",
                 "answer_type": "static",
-                "correct_answer": "factorial",
-                "answer_choices": [
-                    {"text": "factorial", "is_correct": True},
-                    {"text": "helper", "is_correct": False}
-                ],
+                "correct_answer": "recursive",
+                "alternative_answers": ["recursion", "recursive function", "calls itself"],
+                "answer_choices": [],
                 "difficulty": "medium"
             }
         }

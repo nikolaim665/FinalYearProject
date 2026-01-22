@@ -36,6 +36,11 @@ from question_engine.ai_generator import (
     AIQuestionGenerator,
     GenerationConfig,
 )
+from question_engine.answer_validator import (
+    AnswerValidator,
+    ValidationResult,
+    MatchType,
+)
 from database import crud, get_db
 from database.models import SubmissionStatus
 
@@ -165,6 +170,7 @@ async def submit_code(
                 answer_type=question.answer_type.value,
                 correct_answer={"value": question.correct_answer},
                 answer_choices=answer_choices_dicts,
+                alternative_answers=question.alternative_answers,
                 context=question.context,
                 explanation=question.explanation,
                 difficulty=question.difficulty
@@ -188,6 +194,7 @@ async def submit_code(
                 question_level=QuestionLevelEnum(db_question.question_level),
                 answer_type=db_question.answer_type,
                 correct_answer=db_question.correct_answer["value"],
+                alternative_answers=db_question.alternative_answers or [],
                 answer_choices=answer_choices,
                 context=db_question.context,
                 explanation=db_question.explanation,
@@ -304,7 +311,9 @@ async def submit_answer(
         # Check answer based on question type
         is_correct = False
         explanation = ""
+        score = 0.0
         correct_answer_value = question.correct_answer.get("value")
+        alternative_answers = question.alternative_answers or []
 
         question_type = QuestionTypeEnum(question.question_type)
 
@@ -312,6 +321,7 @@ async def submit_answer(
             # For multiple choice, check if answer matches correct choice
             if isinstance(request.answer, str):
                 is_correct = request.answer == str(correct_answer_value)
+                score = 1.0 if is_correct else 0.0
                 if is_correct:
                     explanation = f"Correct! {question.explanation or ''}"
                 else:
@@ -323,6 +333,7 @@ async def submit_answer(
                 user_answer = float(request.answer)
                 correct_answer = float(correct_answer_value)
                 is_correct = abs(user_answer - correct_answer) < 0.0001
+                score = 1.0 if is_correct else 0.0
                 if is_correct:
                     explanation = f"Correct! {question.explanation or ''}"
                 else:
@@ -330,29 +341,48 @@ async def submit_answer(
             except (ValueError, TypeError):
                 explanation = "Invalid numeric answer format"
 
-        elif question_type == QuestionTypeEnum.FILL_IN_BLANK:
-            # For fill-in-blank, check string equality (case-insensitive)
-            user_answer = str(request.answer).strip().lower()
-            correct_answer = str(correct_answer_value).strip().lower()
-            is_correct = user_answer == correct_answer
-            if is_correct:
-                explanation = f"Correct! {question.explanation or ''}"
-            else:
-                explanation = f"Incorrect. The correct answer is: {correct_answer_value}. {question.explanation or ''}"
-
         elif question_type == QuestionTypeEnum.TRUE_FALSE:
             # For true/false questions
             user_answer = str(request.answer).strip().lower()
             correct_answer = str(correct_answer_value).strip().lower()
             is_correct = user_answer == correct_answer
+            score = 1.0 if is_correct else 0.0
             if is_correct:
                 explanation = f"Correct! {question.explanation or ''}"
             else:
                 explanation = f"Incorrect. The correct answer is: {correct_answer_value}. {question.explanation or ''}"
 
+        elif question_type in [QuestionTypeEnum.FILL_IN_BLANK, QuestionTypeEnum.SHORT_ANSWER]:
+            # For open-ended questions, use the semantic answer validator
+            validator = AnswerValidator(case_sensitive=False, allow_partial=True)
+            validation_result = validator.validate(
+                student_answer=str(request.answer),
+                correct_answer=str(correct_answer_value),
+                alternative_answers=alternative_answers,
+                question_type=question_type.value
+            )
+
+            is_correct = validation_result.is_correct
+            score = validation_result.confidence if is_correct else 0.0
+
+            if is_correct:
+                if validation_result.match_type == MatchType.PARTIAL:
+                    explanation = f"Correct! Your answer captures the key concept. {question.explanation or ''}"
+                elif validation_result.match_type == MatchType.ALTERNATIVE:
+                    explanation = f"Correct! {question.explanation or ''}"
+                else:
+                    explanation = f"Correct! {question.explanation or ''}"
+            else:
+                # Show the primary answer, but note that alternatives exist
+                if alternative_answers:
+                    explanation = f"Incorrect. The correct answer is: {correct_answer_value} (other acceptable answers include: {', '.join(alternative_answers[:3])}). {question.explanation or ''}"
+                else:
+                    explanation = f"Incorrect. The correct answer is: {correct_answer_value}. {question.explanation or ''}"
+
         else:
-            # For other types, basic string comparison
+            # For other types (CODE_SELECTION), basic string comparison
             is_correct = str(request.answer) == str(correct_answer_value)
+            score = 1.0 if is_correct else 0.0
             explanation = "Answer recorded" if is_correct else f"The expected answer is: {correct_answer_value}"
 
         # Store answer in database
@@ -362,7 +392,7 @@ async def submit_answer(
             question_id=request.question_id,
             student_answer={"value": request.answer},
             is_correct=is_correct,
-            score=1.0 if is_correct else 0.0,
+            score=score,
             feedback=explanation
         )
 
@@ -438,6 +468,7 @@ async def get_submission_endpoint(
             question_level=QuestionLevelEnum(db_question.question_level),
             answer_type=db_question.answer_type,
             correct_answer=db_question.correct_answer.get("value"),
+            alternative_answers=db_question.alternative_answers or [],
             answer_choices=answer_choices,
             context=db_question.context,
             explanation=db_question.explanation,

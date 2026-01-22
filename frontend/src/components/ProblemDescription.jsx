@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, TestTube, History } from 'lucide-react';
+import { BookOpen, TestTube, History, Clock, Tag, ChevronRight, Play } from 'lucide-react';
 
 const ProblemDescription = ({ problem }) => {
   const [activeTab, setActiveTab] = useState('description');
@@ -40,13 +40,22 @@ Your function should handle edge cases such as n = 0 (which should return 1) and
 
   const displayProblem = problem || defaultProblem;
 
-  const getDifficultyColor = (difficulty) => {
-    const colors = {
-      Easy: 'text-green-600 dark:text-green-400',
-      Medium: 'text-yellow-600 dark:text-yellow-400',
-      Hard: 'text-red-600 dark:text-red-400',
+  const getDifficultyStyles = (difficulty) => {
+    const styles = {
+      Easy: {
+        text: 'text-emerald-700 dark:text-emerald-300',
+        bg: 'bg-emerald-100 dark:bg-emerald-900/50',
+      },
+      Medium: {
+        text: 'text-amber-700 dark:text-amber-300',
+        bg: 'bg-amber-100 dark:bg-amber-900/50',
+      },
+      Hard: {
+        text: 'text-rose-700 dark:text-rose-300',
+        bg: 'bg-rose-100 dark:bg-rose-900/50',
+      },
     };
-    return colors[difficulty] || 'text-gray-600 dark:text-gray-400';
+    return styles[difficulty] || styles.Easy;
   };
 
   const tabs = [
@@ -55,26 +64,29 @@ Your function should handle edge cases such as n = 0 (which should return 1) and
     { id: 'history', label: 'History', icon: History },
   ];
 
+  const difficultyStyles = getDifficultyStyles(displayProblem.difficulty);
+
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors">
+    <div className="h-full flex flex-col card overflow-hidden">
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+      <div className="flex border-b border-slate-200 dark:border-slate-800">
         {tabs.map((tab) => {
           const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors relative ${
-                activeTab === tab.id
-                  ? 'text-blue-600 dark:text-blue-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-all duration-200 relative ${
+                isActive
+                  ? 'text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
               }`}
             >
               <Icon className="w-4 h-4" />
               {tab.label}
-              {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" />
+              {isActive && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />
               )}
             </button>
           );
@@ -82,59 +94,82 @@ Your function should handle edge cases such as n = 0 (which should return 1) and
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto">
         {activeTab === 'description' && (
-          <div className="space-y-6">
+          <div className="p-6 space-y-6">
             {/* Title and Difficulty */}
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-                {displayProblem.title}
-              </h2>
-              <span
-                className={`text-sm font-medium ${getDifficultyColor(
-                  displayProblem.difficulty
-                )}`}
-              >
-                {displayProblem.difficulty}
-              </span>
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                  {displayProblem.title}
+                </h2>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-semibold ${difficultyStyles.bg} ${difficultyStyles.text}`}
+                >
+                  {displayProblem.difficulty}
+                </span>
+              </div>
+
+              {/* Tags */}
+              <div className="flex flex-wrap gap-2">
+                {displayProblem.tags.map((tag, index) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-medium"
+                  >
+                    <Tag className="w-3 h-3" />
+                    {tag}
+                  </span>
+                ))}
+              </div>
             </div>
 
             {/* Description */}
-            <div className="text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-              {displayProblem.description}
+            <div className="prose prose-slate dark:prose-invert prose-sm max-w-none">
+              <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                {displayProblem.description}
+              </p>
             </div>
 
             {/* Examples */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                <Play className="w-5 h-5 text-indigo-500" />
                 Examples
               </h3>
               <div className="space-y-4">
                 {displayProblem.examples.map((example, index) => (
                   <div
                     key={index}
-                    className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700"
+                    className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700"
                   >
-                    <div className="font-mono text-sm mb-2">
-                      <span className="text-gray-600 dark:text-gray-400">
-                        Input:{' '}
-                      </span>
-                      <span className="text-gray-900 dark:text-gray-100">
-                        {example.input}
-                      </span>
+                    <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 mb-2">
+                      Example {index + 1}
                     </div>
-                    <div className="font-mono text-sm mb-2">
-                      <span className="text-gray-600 dark:text-gray-400">
-                        Output:{' '}
-                      </span>
-                      <span className="text-gray-900 dark:text-gray-100">
-                        {example.output}
-                      </span>
+                    <div className="space-y-2 font-mono text-sm">
+                      <div className="flex items-start">
+                        <span className="w-16 text-slate-500 dark:text-slate-400 shrink-0">
+                          Input:
+                        </span>
+                        <code className="text-indigo-600 dark:text-indigo-400">
+                          {example.input}
+                        </code>
+                      </div>
+                      <div className="flex items-start">
+                        <span className="w-16 text-slate-500 dark:text-slate-400 shrink-0">
+                          Output:
+                        </span>
+                        <code className="text-emerald-600 dark:text-emerald-400">
+                          {example.output}
+                        </code>
+                      </div>
                     </div>
                     {example.explanation && (
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                        <span className="font-medium">Explanation: </span>
-                        {example.explanation}
+                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                          <span className="font-medium">Explanation: </span>
+                          {example.explanation}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -144,48 +179,34 @@ Your function should handle edge cases such as n = 0 (which should return 1) and
 
             {/* Constraints */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
                 Constraints
               </h3>
-              <ul className="space-y-2 text-gray-700 dark:text-gray-300">
+              <ul className="space-y-2">
                 {displayProblem.constraints.map((constraint, index) => (
-                  <li key={index} className="flex items-start">
-                    <span className="mr-2">•</span>
-                    <span className="font-mono text-sm">{constraint}</span>
+                  <li key={index} className="flex items-start gap-3 text-slate-700 dark:text-slate-300">
+                    <ChevronRight className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+                    <code className="text-sm font-mono">{constraint}</code>
                   </li>
                 ))}
               </ul>
-            </div>
-
-            {/* Tags */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                Tags
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {displayProblem.tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
             </div>
           </div>
         )}
 
         {activeTab === 'testcases' && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Test Cases
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400">
-              Test cases will appear here after you run your code.
-            </p>
-            <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+          <div className="p-6">
+            <div className="text-center py-12">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                <TestTube className="w-8 h-8 text-slate-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                No Test Results Yet
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400 mb-4">
+                Test cases will appear here after you run your code.
+              </p>
+              <p className="text-sm text-slate-400 dark:text-slate-500">
                 Click "Run Code" to execute test cases
               </p>
             </div>
@@ -193,16 +214,16 @@ Your function should handle edge cases such as n = 0 (which should return 1) and
         )}
 
         {activeTab === 'history' && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Submission History
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400">
-              Your submission history will appear here.
-            </p>
-            <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                No submissions yet
+          <div className="p-6">
+            <div className="text-center py-12">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                <Clock className="w-8 h-8 text-slate-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                No Submissions Yet
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400">
+                Your submission history will appear here.
               </p>
             </div>
           </div>

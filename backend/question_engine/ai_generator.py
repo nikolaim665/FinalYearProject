@@ -68,6 +68,7 @@ class GeneratedQuestion:
     answer_type: AnswerType
     correct_answer: Any
     answer_choices: List[QuestionAnswer] = field(default_factory=list)
+    alternative_answers: List[str] = field(default_factory=list)
     context: Dict[str, Any] = field(default_factory=dict)
     explanation: Optional[str] = None
     difficulty: str = "medium"
@@ -81,6 +82,7 @@ class GeneratedQuestion:
             'question_level': self.question_level.value,
             'answer_type': self.answer_type.value,
             'correct_answer': self.correct_answer,
+            'alternative_answers': self.alternative_answers,
             'answer_choices': [
                 {
                     'text': choice.text,
@@ -186,7 +188,7 @@ Question Types:
 - multiple_choice: Provide 4 options, one correct
 - fill_in_blank: Student fills in a value
 - numeric: Student provides a number
-- short_answer: Brief text answer
+- short_answer: Brief text answer (open-ended, may have multiple valid answers)
 - true_false: True or False question
 
 IMPORTANT:
@@ -196,6 +198,31 @@ IMPORTANT:
 - Never make up or guess values - only use what's in the analysis
 - Include the explanation field to help students learn
 
+CRITICAL - MULTIPLE VALID ANSWERS:
+For open-ended questions (short_answer, fill_in_blank), you MUST provide alternative_answers when multiple answers could be semantically correct:
+- Include synonyms (e.g., "loop", "iteration", "repetition")
+- Include equivalent phrasings (e.g., "calculates sum", "computes the total", "adds up values")
+- Include acceptable variations (e.g., "recursive function", "recursion", "calls itself")
+- Include different levels of detail that are all correct
+- Think about how a student might reasonably phrase their answer
+- Consider common student vocabulary and informal expressions
+
+NUMERIC QUESTIONS - IMPORTANT:
+For numeric questions, consider:
+- Provide alternative_answers for equivalent representations (e.g., "3.14", "3.14159", "pi")
+- Include context about acceptable precision in the explanation
+- For questions about loop counts, iterations, or sequence lengths, be EXACT
+- If a range of values is acceptable, note this in the explanation
+
+CONTEXT IS CRITICAL:
+Always include relevant context in each question:
+- variable_name: When asking about a specific variable
+- function_name: When asking about a function's behavior
+- line_number: The relevant code line
+- data_type: When asking about types
+- loop_name: When asking about loop behavior (e.g., "for", "while")
+This context helps validate student answers more intelligently.
+
 Return your response as a JSON array of question objects with this structure:
 {
   "questions": [
@@ -204,7 +231,12 @@ Return your response as a JSON array of question objects with this structure:
       "question_text": "The question text",
       "question_type": "multiple_choice|fill_in_blank|numeric|short_answer|true_false",
       "question_level": "atom|block|relational|macro",
-      "correct_answer": "The correct answer (string or number)",
+      "correct_answer": "The primary correct answer (string or number)",
+      "alternative_answers": [  // REQUIRED for short_answer, fill_in_blank, and when applicable to numeric
+        "Alternative phrasing 1",
+        "Synonym or equivalent answer",
+        "Another valid way to express the answer"
+      ],
       "answer_choices": [  // Only for multiple_choice
         {"text": "Option A", "is_correct": false, "explanation": "Why wrong"},
         {"text": "Option B", "is_correct": true, "explanation": "Why correct"},
@@ -213,13 +245,48 @@ Return your response as a JSON array of question objects with this structure:
       "difficulty": "easy|medium|hard",
       "explanation": "Educational explanation of the answer",
       "context": {
-        "line_number": 5,  // Optional: relevant line number
-        "variable_name": "x",  // Optional: relevant variable
-        "function_name": "foo"  // Optional: relevant function
+        "line_number": 5,  // INCLUDE when relevant
+        "variable_name": "x",  // INCLUDE when asking about a variable
+        "function_name": "foo",  // INCLUDE when asking about a function
+        "data_type": "int",  // INCLUDE when asking about types
+        "loop_type": "for"  // INCLUDE when asking about loops
       }
     }
   ]
-}"""
+}
+
+Examples of good alternative_answers:
+
+1. Function type question:
+   - Question: "What type of function is factorial?"
+   - correct_answer: "recursive"
+   - alternative_answers: ["recursion", "recursive function", "calls itself", "self-calling", "a function that calls itself"]
+   - context: {"function_name": "factorial"}
+
+2. Loop purpose question:
+   - Question: "What is the purpose of the for loop?"
+   - correct_answer: "iterates through the list"
+   - alternative_answers: ["loops through the list", "goes through each element", "processes list items", "traverses the list", "visits each item"]
+   - context: {"loop_type": "for", "line_number": 3}
+
+3. Variable purpose question:
+   - Question: "What does the variable 'total' store?"
+   - correct_answer: "the sum of all numbers"
+   - alternative_answers: ["sum of numbers", "total sum", "accumulated sum", "sum", "running total", "cumulative total"]
+   - context: {"variable_name": "total", "data_type": "int"}
+
+4. Numeric question with context:
+   - Question: "How many times does the while loop execute?"
+   - correct_answer: 5
+   - alternative_answers: ["five", "5 times"]
+   - context: {"loop_type": "while", "line_number": 7}
+   - explanation: "The loop runs exactly 5 times because..."
+
+5. Data type question:
+   - Question: "What is the data type of the variable 'names'?"
+   - correct_answer: "list"
+   - alternative_answers: ["array", "list of strings", "collection", "sequence"]
+   - context: {"variable_name": "names", "data_type": "list"}"""
 
 
 class AIQuestionGenerator:
@@ -442,6 +509,11 @@ class AIQuestionGenerator:
                 )
                 answer_choices.append(choice)
 
+        # Extract alternative answers for open-ended questions
+        alternative_answers = q_data.get("alternative_answers", [])
+        if not isinstance(alternative_answers, list):
+            alternative_answers = []
+
         return GeneratedQuestion(
             template_id=q_data.get("template_id", "ai_generated"),
             question_text=q_data.get("question_text", ""),
@@ -450,6 +522,7 @@ class AIQuestionGenerator:
             answer_type=AnswerType.AI,
             correct_answer=q_data.get("correct_answer"),
             answer_choices=answer_choices,
+            alternative_answers=alternative_answers,
             context=q_data.get("context", {}),
             explanation=q_data.get("explanation"),
             difficulty=q_data.get("difficulty", "medium")

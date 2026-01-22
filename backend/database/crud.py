@@ -166,6 +166,7 @@ async def create_question(
     answer_type: str,
     correct_answer: dict,
     answer_choices: Optional[List[dict]] = None,
+    alternative_answers: Optional[List[str]] = None,
     context: Optional[dict] = None,
     explanation: Optional[str] = None,
     difficulty: str = "medium",
@@ -182,7 +183,8 @@ async def create_question(
         question_level: Question level
         answer_type: Type of answer
         correct_answer: Correct answer
-        answer_choices: Optional answer choices
+        answer_choices: Optional answer choices (for multiple choice)
+        alternative_answers: Optional list of alternative acceptable answers
         context: Optional context dict
         explanation: Optional explanation
         difficulty: Difficulty level
@@ -202,6 +204,7 @@ async def create_question(
         answer_type=answer_type,
         correct_answer=correct_answer,
         answer_choices=answer_choices or [],
+        alternative_answers=alternative_answers or [],
         context=context or {},
         explanation=explanation,
         difficulty=difficulty,

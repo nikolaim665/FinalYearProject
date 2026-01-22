@@ -134,6 +134,12 @@ class Question(Base):
     Represents a generated question about student code.
 
     Linked to a code submission and can have multiple student answers.
+
+    The correct_answer field stores a JSON object with:
+    - value: The primary correct answer
+    - alternative_answers: List of alternative acceptable answers (for open-ended questions)
+    - case_sensitive: Whether answer comparison is case-sensitive (default False)
+    - partial_match: Whether partial matching is allowed (default False)
     """
 
     __tablename__ = "questions"
@@ -163,6 +169,8 @@ class Question(Base):
     # Answer information
     answer_type: Mapped[str] = mapped_column(String(50), nullable=False)
     correct_answer: Mapped[dict] = mapped_column(JSONEncodedDict, nullable=False)
+    # Alternative acceptable answers for open-ended questions
+    alternative_answers: Mapped[Optional[list]] = mapped_column(JSONEncodedDict, nullable=True, default=list)
     answer_choices: Mapped[list] = mapped_column(JSONEncodedDict, nullable=True, default=list)
 
     # Additional context

@@ -2,10 +2,15 @@ import { useState } from 'react';
 import {
   CheckCircle,
   XCircle,
-  Circle,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  HelpCircle,
+  Loader2,
+  Sparkles,
+  Trophy,
+  Target,
+  Lightbulb,
 } from 'lucide-react';
 
 const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
@@ -14,20 +19,37 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
   const [feedback, setFeedback] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Calculate score
+  const answeredQuestions = Object.keys(feedback).length;
+  const correctAnswers = Object.values(feedback).filter(f => f.is_correct).length;
+
   if (!questions || questions.length === 0) {
     return (
-      <div className="card h-full flex items-center justify-center bg-white dark:bg-gray-800 transition-colors">
-        <div className="text-center text-gray-500 dark:text-gray-400">
-          <AlertCircle className="w-16 h-16 mx-auto mb-4 text-gray-400 dark:text-gray-500" />
-          <p className="text-lg">No questions available</p>
-          <p className="text-sm mt-2">Submit code to generate questions</p>
+      <div className="card h-full flex items-center justify-center p-8">
+        <div className="text-center max-w-sm">
+          <div className="relative mb-6">
+            <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 flex items-center justify-center">
+              <HelpCircle className="w-10 h-10 text-indigo-500 dark:text-indigo-400" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 blur-xl" />
+          </div>
+          <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
+            No Questions Yet
+          </h3>
+          <p className="text-slate-500 dark:text-slate-400 mb-4">
+            Submit your Python code to generate AI-powered comprehension questions.
+          </p>
+          <div className="flex items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400">
+            <Sparkles className="w-4 h-4" />
+            <span>Powered by GPT</span>
+          </div>
         </div>
       </div>
     );
   }
 
   const currentQuestion = questions[currentQuestionIndex];
-  const currentAnswer = answers[currentQuestion.id] || '';
+  const currentAnswer = answers[currentQuestion.id] ?? '';
   const currentFeedback = feedback[currentQuestion.id];
 
   const handleAnswerChange = (value) => {
@@ -38,8 +60,7 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
   };
 
   const handleSubmitAnswer = async () => {
-    if (!currentAnswer.trim()) {
-      alert('Please provide an answer');
+    if (currentAnswer === '' || (typeof currentAnswer === 'string' && !currentAnswer.trim())) {
       return;
     }
 
@@ -77,7 +98,7 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
   const getQuestionTypeDisplay = (type) => {
     const types = {
       multiple_choice: 'Multiple Choice',
-      fill_in_blank: 'Fill in the Blank',
+      fill_in_blank: 'Fill in Blank',
       true_false: 'True/False',
       short_answer: 'Short Answer',
       numeric: 'Numeric',
@@ -86,38 +107,42 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
     return types[type] || type;
   };
 
-  const getLevelBadgeColor = (level) => {
-    const colors = {
-      atom: 'bg-green-100 text-green-800',
-      block: 'bg-blue-100 text-blue-800',
-      relational: 'bg-purple-100 text-purple-800',
-      macro: 'bg-orange-100 text-orange-800',
+  const getLevelBadgeClass = (level) => {
+    const classes = {
+      atom: 'badge-success',
+      block: 'badge-blue',
+      relational: 'badge-purple',
+      macro: 'badge-warning',
     };
-    return colors[level] || 'bg-gray-100 text-gray-800';
+    return classes[level] || 'badge-slate';
   };
 
-  const getDifficultyBadgeColor = (difficulty) => {
-    const colors = {
-      easy: 'bg-green-100 text-green-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      hard: 'bg-red-100 text-red-800',
+  const getDifficultyBadgeClass = (difficulty) => {
+    const classes = {
+      easy: 'badge-success',
+      medium: 'badge-warning',
+      hard: 'badge-danger',
     };
-    return colors[difficulty] || 'bg-gray-100 text-gray-800';
+    return classes[difficulty] || 'badge-slate';
   };
 
   const renderAnswerInput = () => {
     if (currentFeedback) {
-      return null; // Don't show input if already answered
+      return null;
     }
 
     switch (currentQuestion.question_type) {
       case 'multiple_choice':
         return (
-          <div className="space-y-2">
-            {currentQuestion.answer_choices.map((choice, index) => (
+          <div className="space-y-3">
+            {currentQuestion.answer_choices?.map((choice, index) => (
               <label
                 key={index}
-                className="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                className={`flex items-start p-4 rounded-xl cursor-pointer transition-all duration-200 border-2 ${
+                  currentAnswer === choice.text
+                    ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                }`}
               >
                 <input
                   type="radio"
@@ -125,9 +150,9 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
                   value={choice.text}
                   checked={currentAnswer === choice.text}
                   onChange={(e) => handleAnswerChange(e.target.value)}
-                  className="mt-1 mr-3"
+                  className="mt-1 mr-4 w-4 h-4 text-indigo-600 focus:ring-indigo-500"
                 />
-                <span className="flex-1">{choice.text}</span>
+                <span className="flex-1 text-slate-700 dark:text-slate-300">{choice.text}</span>
               </label>
             ))}
           </div>
@@ -135,29 +160,37 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
 
       case 'true_false':
         return (
-          <div className="flex gap-4">
-            <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 flex-1">
-              <input
-                type="radio"
-                name="answer"
-                value="true"
-                checked={currentAnswer === 'true'}
-                onChange={(e) => handleAnswerChange(e.target.value)}
-                className="mr-3"
-              />
-              <span>True</span>
-            </label>
-            <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 flex-1">
-              <input
-                type="radio"
-                name="answer"
-                value="false"
-                checked={currentAnswer === 'false'}
-                onChange={(e) => handleAnswerChange(e.target.value)}
-                className="mr-3"
-              />
-              <span>False</span>
-            </label>
+          <div className="grid grid-cols-2 gap-4">
+            {['true', 'false'].map((value) => (
+              <label
+                key={value}
+                className={`flex items-center justify-center p-4 rounded-xl cursor-pointer transition-all duration-200 border-2 ${
+                  currentAnswer === value
+                    ? value === 'true'
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                      : 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="answer"
+                  value={value}
+                  checked={currentAnswer === value}
+                  onChange={(e) => handleAnswerChange(e.target.value)}
+                  className="sr-only"
+                />
+                <span className={`font-semibold capitalize ${
+                  currentAnswer === value
+                    ? value === 'true'
+                      ? 'text-emerald-700 dark:text-emerald-300'
+                      : 'text-rose-700 dark:text-rose-300'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}>
+                  {value}
+                </span>
+              </label>
+            ))}
           </div>
         );
 
@@ -168,7 +201,7 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
             value={currentAnswer}
             onChange={(e) => handleAnswerChange(e.target.value)}
             placeholder="Enter a number"
-            className="input-field"
+            className="input-field text-lg"
             step="any"
           />
         );
@@ -178,166 +211,227 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
           <textarea
             value={currentAnswer}
             onChange={(e) => handleAnswerChange(e.target.value)}
-            placeholder="Enter your answer"
-            className="input-field"
-            rows="3"
+            placeholder="Type your answer here..."
+            className="input-field resize-none"
+            rows="4"
           />
         );
     }
   };
 
   return (
-    <div className="card h-full flex flex-col bg-white dark:bg-gray-800 transition-colors">
-      <div className="mb-6">
+    <div className="card h-full flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Questions</h2>
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            Question {currentQuestionIndex + 1} of {questions.length}
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+              <Target className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Questions
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Question {currentQuestionIndex + 1} of {questions.length}
+              </p>
+            </div>
           </div>
+
+          {/* Score Display */}
+          {answeredQuestions > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800">
+              <Trophy className={`w-4 h-4 ${correctAnswers === answeredQuestions ? 'text-amber-500' : 'text-slate-400'}`} />
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                {correctAnswers}/{answeredQuestions}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Progress indicator */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-1.5">
           {questions.map((q, idx) => {
             const answered = feedback[q.id];
             return (
               <button
                 key={q.id}
                 onClick={() => setCurrentQuestionIndex(idx)}
-                className="flex-1 h-2 rounded-full transition-colors"
-                style={{
-                  backgroundColor: answered
-                    ? answered.is_correct
-                      ? '#10b981'
-                      : '#ef4444'
-                    : idx === currentQuestionIndex
-                    ? '#3b82f6'
-                    : '#e5e7eb',
-                }}
-                title={`Question ${idx + 1}${
+                className={`flex-1 h-2 rounded-full transition-all duration-300 ${
                   answered
                     ? answered.is_correct
-                      ? ' - Correct'
-                      : ' - Incorrect'
-                    : ''
+                      ? 'bg-emerald-500'
+                      : 'bg-rose-500'
+                    : idx === currentQuestionIndex
+                    ? 'bg-indigo-500'
+                    : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600'
+                }`}
+                title={`Question ${idx + 1}${
+                  answered ? (answered.is_correct ? ' - Correct' : ' - Incorrect') : ''
                 }`}
               />
             );
           })}
         </div>
+      </div>
 
-        {/* Question metadata */}
-        <div className="flex gap-2 flex-wrap">
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-medium ${getLevelBadgeColor(
-              currentQuestion.question_level
-            )}`}
-          >
-            {currentQuestion.question_level.toUpperCase()}
+      {/* Question Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {/* Question metadata badges */}
+        <div className="flex gap-2 flex-wrap mb-4">
+          <span className={getLevelBadgeClass(currentQuestion.question_level)}>
+            {currentQuestion.question_level}
           </span>
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-medium ${getDifficultyBadgeColor(
-              currentQuestion.difficulty
-            )}`}
-          >
-            {currentQuestion.difficulty.toUpperCase()}
+          <span className={getDifficultyBadgeClass(currentQuestion.difficulty)}>
+            {currentQuestion.difficulty}
           </span>
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+          <span className="badge-slate">
             {getQuestionTypeDisplay(currentQuestion.question_type)}
           </span>
         </div>
-      </div>
 
-      {/* Question text */}
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-          {currentQuestion.question_text}
-        </h3>
-        {currentQuestion.context && (
-          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3">
-            <p className="text-sm text-gray-700">{currentQuestion.context}</p>
-          </div>
-        )}
-      </div>
+        {/* Question text */}
+        <div className="mb-6">
+          <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 leading-relaxed">
+            {currentQuestion.question_text}
+          </h3>
+          {currentQuestion.context && typeof currentQuestion.context === 'string' && (
+            <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
+              <p className="text-sm text-slate-600 dark:text-slate-400 font-mono">
+                {currentQuestion.context}
+              </p>
+            </div>
+          )}
+        </div>
 
-      {/* Answer input or feedback */}
-      <div className="flex-1 mb-6">
+        {/* Answer input or feedback */}
         {currentFeedback ? (
           <div
-            className={`p-4 rounded-lg border-2 ${
+            className={`p-5 rounded-2xl border-2 transition-all duration-300 ${
               currentFeedback.is_correct
-                ? 'bg-green-50 border-green-500'
-                : 'bg-red-50 border-red-500'
+                ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500'
+                : 'bg-rose-50 dark:bg-rose-900/20 border-rose-500'
             }`}
           >
-            <div className="flex items-start gap-3">
-              {currentFeedback.is_correct ? (
-                <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-              ) : (
-                <XCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
-              )}
+            <div className="flex items-start gap-4">
+              <div className={`p-2 rounded-xl ${
+                currentFeedback.is_correct
+                  ? 'bg-emerald-500'
+                  : 'bg-rose-500'
+              }`}>
+                {currentFeedback.is_correct ? (
+                  <CheckCircle className="w-6 h-6 text-white" />
+                ) : (
+                  <XCircle className="w-6 h-6 text-white" />
+                )}
+              </div>
               <div className="flex-1">
-                <p
-                  className={`font-semibold mb-2 ${
-                    currentFeedback.is_correct ? 'text-green-900' : 'text-red-900'
-                  }`}
-                >
+                <p className={`text-lg font-semibold mb-2 ${
+                  currentFeedback.is_correct
+                    ? 'text-emerald-900 dark:text-emerald-100'
+                    : 'text-rose-900 dark:text-rose-100'
+                }`}>
                   {currentFeedback.is_correct ? 'Correct!' : 'Incorrect'}
                 </p>
-                <p
-                  className={
-                    currentFeedback.is_correct ? 'text-green-800' : 'text-red-800'
-                  }
-                >
-                  {currentFeedback.explanation}
-                </p>
-                {currentFeedback.correct_answer && (
-                  <p className="mt-2 text-sm text-red-700">
-                    <strong>Correct answer:</strong> {currentFeedback.correct_answer}
+
+                {currentFeedback.explanation && (
+                  <div className={`p-3 rounded-lg mb-3 ${
+                    currentFeedback.is_correct
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                      : 'bg-rose-100 dark:bg-rose-900/30'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <Lightbulb className={`w-4 h-4 mt-0.5 ${
+                        currentFeedback.is_correct
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-rose-600 dark:text-rose-400'
+                      }`} />
+                      <p className={`text-sm ${
+                        currentFeedback.is_correct
+                          ? 'text-emerald-800 dark:text-emerald-200'
+                          : 'text-rose-800 dark:text-rose-200'
+                      }`}>
+                        {currentFeedback.explanation}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {currentFeedback.correct_answer && !currentFeedback.is_correct && (
+                  <p className="text-sm text-rose-700 dark:text-rose-300 mb-2">
+                    <span className="font-medium">Correct answer:</span> {String(currentFeedback.correct_answer)}
                   </p>
                 )}
-                <div className="mt-3">
-                  <p className="text-sm font-medium text-gray-700">Your answer:</p>
-                  <p className="text-sm text-gray-600">{currentAnswer}</p>
+
+                <div className="text-sm">
+                  <span className="font-medium text-slate-600 dark:text-slate-400">Your answer: </span>
+                  <span className="text-slate-700 dark:text-slate-300">{String(currentAnswer)}</span>
                 </div>
               </div>
             </div>
           </div>
         ) : (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="space-y-4">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
               Your Answer
             </label>
             {renderAnswerInput()}
             <button
               onClick={handleSubmitAnswer}
-              disabled={submitting || !currentAnswer.trim()}
-              className="btn-primary mt-4"
+              disabled={submitting || currentAnswer === '' || (typeof currentAnswer === 'string' && !currentAnswer.trim())}
+              className="btn-primary w-full flex items-center justify-center gap-2"
             >
-              {submitting ? 'Submitting...' : 'Submit Answer'}
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  Submit Answer
+                </>
+              )}
             </button>
           </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <div className="flex justify-between items-center pt-4 border-t">
-        <button
-          onClick={prevQuestion}
-          disabled={currentQuestionIndex === 0}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Previous
-        </button>
-        <button
-          onClick={nextQuestion}
-          disabled={currentQuestionIndex === questions.length - 1}
-          className="btn-secondary flex items-center gap-2"
-        >
-          Next
-          <ChevronRight className="w-4 h-4" />
-        </button>
+      {/* Navigation Footer */}
+      <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+        <div className="flex justify-between items-center">
+          <button
+            onClick={prevQuestion}
+            disabled={currentQuestionIndex === 0}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Previous
+          </button>
+
+          <div className="flex items-center gap-1">
+            {questions.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentQuestionIndex(idx)}
+                className={`w-2 h-2 rounded-full transition-all duration-200 ${
+                  idx === currentQuestionIndex
+                    ? 'w-6 bg-indigo-500'
+                    : 'bg-slate-300 dark:bg-slate-600 hover:bg-slate-400 dark:hover:bg-slate-500'
+                }`}
+              />
+            ))}
+          </div>
+
+          <button
+            onClick={nextQuestion}
+            disabled={currentQuestionIndex === questions.length - 1}
+            className="btn-secondary flex items-center gap-2"
+          >
+            Next
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -23,7 +23,14 @@
       "Bash(source .venv/bin/activate)",
       "Bash(npm run dev:*)",
       "Bash(tree:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(xargs cat:*)",
+      "Bash(npm run build:*)",
+      "Bash(pkill:*)",
+      "Bash(xargs:*)",
+      "Bash(alembic stamp:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": [],
     "ask": []
