@@ -30,7 +30,8 @@
       "Bash(pkill:*)",
       "Bash(xargs:*)",
       "Bash(alembic stamp:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(.venv/bin/python -m pytest:*)"
     ],
     "deny": [],
     "ask": []

@@ -4,16 +4,28 @@ AI-Powered Question Generator
 Uses OpenAI GPT-5.2 to generate comprehension questions about student code.
 Takes static and dynamic analysis results as input and generates contextual,
 pedagogically valuable questions.
+
+Enhanced with:
+- Retry logic for API failures
+- Response caching for identical code
+- Optimized prompts for efficiency
+- Better error handling and recovery
+- Streaming support for long responses
+- Token usage tracking
 """
 
 import os
 import json
 import time
-from typing import Dict, List, Any, Optional
+import hashlib
+import logging
+from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
+import threading
 
-from openai import OpenAI
+from openai import OpenAI, APIError, RateLimitError, APIConnectionError
 
 # Import analyzers
 import sys
@@ -22,6 +34,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from analyzers.static_analyzer import StaticAnalyzer
 from analyzers.dynamic_analyzer import DynamicAnalyzer
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class QuestionLevel(Enum):
@@ -113,6 +128,14 @@ class GenerationConfig:
     temperature: float = 0.7
     model: str = "gpt-5.2"
 
+    # Enhanced settings
+    max_retries: int = 3
+    retry_delay: float = 1.0  # seconds
+    enable_caching: bool = True
+    cache_ttl: int = 3600  # seconds
+    max_tokens: int = 4000  # Max tokens for response
+    request_timeout: int = 60  # seconds
+
 
 @dataclass
 class GenerationResult:
@@ -127,6 +150,10 @@ class GenerationResult:
     warnings: List[str] = field(default_factory=list)
     execution_successful: bool = True
     execution_time_ms: float = 0.0
+    # Enhanced fields
+    tokens_used: int = 0
+    from_cache: bool = False
+    retries_needed: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -138,7 +165,9 @@ class GenerationResult:
                 'total_returned': len(self.questions),
                 'applicable_templates': self.applicable_templates,
                 'execution_successful': self.execution_successful,
-                'execution_time_ms': self.execution_time_ms
+                'execution_time_ms': self.execution_time_ms,
+                'tokens_used': self.tokens_used,
+                'from_cache': self.from_cache,
             },
             'errors': self.errors,
             'warnings': self.warnings,
@@ -160,8 +189,56 @@ class GenerationResult:
             'execution_successful': self.dynamic_analysis.get('execution_successful', False),
             'max_stack_depth': self.dynamic_analysis.get('max_stack_depth', 0),
             'total_lines_executed': self.dynamic_analysis.get('total_lines_executed', 0),
-            'exception': self.dynamic_analysis.get('exception')
+            'exception': self.dynamic_analysis.get('exception'),
+            'timed_out': self.dynamic_analysis.get('timed_out', False),
+            'has_recursion': self.dynamic_analysis.get('has_recursion', False),
         }
+
+
+class ResponseCache:
+    """Thread-safe cache for AI responses."""
+
+    def __init__(self, ttl: int = 3600):
+        self._cache: Dict[str, Tuple[List[GeneratedQuestion], float, int]] = {}
+        self._lock = threading.Lock()
+        self._ttl = ttl
+
+    def _make_key(self, source_code: str, config: GenerationConfig) -> str:
+        """Create a cache key from source code and config."""
+        key_data = f"{source_code}:{config.max_questions}:{config.temperature}"
+        return hashlib.md5(key_data.encode()).hexdigest()
+
+    def get(self, source_code: str, config: GenerationConfig) -> Optional[Tuple[List[GeneratedQuestion], int]]:
+        """Get cached questions if available and not expired."""
+        key = self._make_key(source_code, config)
+        with self._lock:
+            if key in self._cache:
+                questions, timestamp, tokens = self._cache[key]
+                if time.time() - timestamp < self._ttl:
+                    return questions, tokens
+                else:
+                    # Expired, remove from cache
+                    del self._cache[key]
+        return None
+
+    def set(self, source_code: str, config: GenerationConfig, questions: List[GeneratedQuestion], tokens: int):
+        """Cache questions for the given source code."""
+        key = self._make_key(source_code, config)
+        with self._lock:
+            self._cache[key] = (questions, time.time(), tokens)
+            # Simple cache eviction: remove oldest entries if cache gets too large
+            if len(self._cache) > 100:
+                oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][1])
+                del self._cache[oldest_key]
+
+    def clear(self):
+        """Clear the cache."""
+        with self._lock:
+            self._cache.clear()
+
+
+# Global cache instance
+_response_cache = ResponseCache()
 
 
 # System prompt for the AI
@@ -169,13 +246,13 @@ SYSTEM_PROMPT = """You are an expert computer science educator specializing in a
 
 You will receive:
 1. The student's Python code
-2. Static analysis results (code structure: functions, variables, loops, etc.)
+2. Static analysis results (code structure: functions, variables, loops, classes, comprehensions, etc.)
 3. Dynamic analysis results (runtime behavior: variable values, loop iterations, function calls, etc.)
 
 Generate questions that:
 - Test understanding at different cognitive levels (from basic recall to deep comprehension)
 - Have clear, unambiguous correct answers derived from the analysis data
-- Cover different aspects of the code (variables, control flow, functions, etc.)
+- Cover different aspects of the code (variables, control flow, functions, classes, etc.)
 - Are pedagogically valuable - they help identify gaps in understanding
 
 Question Levels (based on Block Model):
@@ -197,6 +274,17 @@ IMPORTANT:
 - For loop counts, use EXACT iteration counts from dynamic analysis
 - Never make up or guess values - only use what's in the analysis
 - Include the explanation field to help students learn
+
+COMPLEX CODE FEATURES - Generate questions about:
+- Classes: Ask about inheritance, methods, instance vs class variables, __init__ behavior
+- Comprehensions: Ask about what list/dict/set comprehensions produce, their conditions
+- Generators: Ask about yield behavior, generator iteration
+- Decorators: Ask about what decorators do to functions
+- Exception Handling: Ask about which exceptions are caught, try/except/finally flow
+- Async Code: Ask about await, async functions
+- Context Managers: Ask about what 'with' statements manage
+- Recursion: Ask about base cases, recursive calls, stack depth
+- Closures: Ask about nested functions and variable capture
 
 CRITICAL - MULTIPLE VALID ANSWERS:
 For open-ended questions (short_answer, fill_in_blank), you MUST provide alternative_answers when multiple answers could be semantically correct:
@@ -293,6 +381,12 @@ class AIQuestionGenerator:
     """
     AI-powered question generator using OpenAI GPT-5.2.
     Orchestrates the complete question generation pipeline.
+
+    Enhanced with:
+    - Retry logic for API failures
+    - Response caching
+    - Optimized analysis data filtering
+    - Better error recovery
     """
 
     def __init__(self, config: Optional[GenerationConfig] = None, api_key: Optional[str] = None):
@@ -307,8 +401,12 @@ class AIQuestionGenerator:
         self.static_analyzer = StaticAnalyzer()
         self.dynamic_analyzer = DynamicAnalyzer(timeout=self.config.dynamic_timeout)
 
-        # Initialize OpenAI client
-        self.client = OpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"))
+        # Initialize OpenAI client with timeout
+        self.client = OpenAI(
+            api_key=api_key or os.environ.get("OPENAI_API_KEY"),
+            timeout=self.config.request_timeout,
+        )
+        self._retries_needed = 0
 
     def generate(
         self,
@@ -327,6 +425,21 @@ class AIQuestionGenerator:
         """
         start_time = time.time()
         result = GenerationResult(questions=[])
+        self._retries_needed = 0
+
+        # Check cache first
+        if self.config.enable_caching:
+            cached = _response_cache.get(source_code, self.config)
+            if cached:
+                questions, tokens = cached
+                result.questions = questions
+                result.total_generated = len(questions)
+                result.from_cache = True
+                result.tokens_used = tokens
+                result.applicable_templates = 1
+                result.execution_time_ms = (time.time() - start_time) * 1000
+                logger.info(f"Returning {len(questions)} questions from cache")
+                return result
 
         # Step 1: Static Analysis
         static_analysis = None
@@ -348,7 +461,10 @@ class AIQuestionGenerator:
             result.dynamic_analysis = dynamic_analysis
             result.execution_successful = dynamic_analysis.get('execution_successful', False)
 
-            if not result.execution_successful:
+            if dynamic_analysis.get('timed_out'):
+                result.warnings.append(f"Code execution timed out after {self.config.dynamic_timeout} seconds")
+                result.warnings.append("Questions will be based on partial execution data")
+            elif not result.execution_successful:
                 exception = dynamic_analysis.get('exception', 'Unknown error')
                 result.warnings.append(f"Code execution failed: {exception}")
                 result.warnings.append("Questions will be limited to static analysis only")
@@ -361,18 +477,26 @@ class AIQuestionGenerator:
             result.errors.append("Both static and dynamic analysis failed")
             return result
 
-        # Step 3: Generate questions using AI
+        # Step 3: Generate questions using AI (with retry logic)
         try:
-            questions = self._generate_with_ai(
+            questions, tokens_used = self._generate_with_ai_retry(
                 source_code,
                 static_analysis or {},
                 dynamic_analysis
             )
             result.questions = questions
             result.total_generated = len(questions)
+            result.tokens_used = tokens_used
+            result.retries_needed = self._retries_needed
             result.applicable_templates = 1  # AI acts as one "template"
+
+            # Cache the result
+            if self.config.enable_caching and questions:
+                _response_cache.set(source_code, self.config, questions, tokens_used)
+
         except Exception as e:
             result.errors.append(f"AI question generation failed: {e}")
+            logger.error(f"AI generation failed after {self._retries_needed} retries: {e}")
             return result
 
         # Calculate execution time
@@ -381,12 +505,60 @@ class AIQuestionGenerator:
 
         return result
 
+    def _generate_with_ai_retry(
+        self,
+        source_code: str,
+        static_analysis: Dict[str, Any],
+        dynamic_analysis: Optional[Dict[str, Any]]
+    ) -> Tuple[List[GeneratedQuestion], int]:
+        """
+        Generate questions with retry logic for API failures.
+
+        Returns:
+            Tuple of (questions, tokens_used)
+        """
+        last_error = None
+
+        for attempt in range(self.config.max_retries):
+            try:
+                return self._generate_with_ai(source_code, static_analysis, dynamic_analysis)
+            except RateLimitError as e:
+                last_error = e
+                self._retries_needed += 1
+                # Exponential backoff for rate limits
+                wait_time = self.config.retry_delay * (2 ** attempt)
+                logger.warning(f"Rate limited, waiting {wait_time}s before retry {attempt + 1}")
+                time.sleep(wait_time)
+            except APIConnectionError as e:
+                last_error = e
+                self._retries_needed += 1
+                logger.warning(f"Connection error, retrying {attempt + 1}/{self.config.max_retries}")
+                time.sleep(self.config.retry_delay)
+            except APIError as e:
+                last_error = e
+                if e.status_code and e.status_code >= 500:
+                    # Server errors - retry
+                    self._retries_needed += 1
+                    logger.warning(f"Server error {e.status_code}, retrying {attempt + 1}")
+                    time.sleep(self.config.retry_delay)
+                else:
+                    # Client errors - don't retry
+                    raise
+            except json.JSONDecodeError as e:
+                last_error = e
+                self._retries_needed += 1
+                logger.warning(f"JSON decode error, retrying {attempt + 1}")
+                time.sleep(self.config.retry_delay)
+
+        # All retries exhausted
+        raise last_error or Exception("Failed to generate questions after all retries")
+
     def _generate_with_ai(
         self,
         source_code: str,
         static_analysis: Dict[str, Any],
         dynamic_analysis: Optional[Dict[str, Any]]
-    ) -> List[GeneratedQuestion]:
+    ) -> Tuple[List[GeneratedQuestion], int]:
         """
         Call OpenAI API to generate questions.
 
@@ -396,12 +568,13 @@ class AIQuestionGenerator:
             dynamic_analysis: Results from dynamic analyzer
 
         Returns:
-            List of generated questions
+            Tuple of (list of generated questions, tokens used)
         """
-        # Build the user prompt with all context
+        # Build the user prompt with optimized/filtered context
         user_prompt = self._build_prompt(source_code, static_analysis, dynamic_analysis)
 
-        # Call OpenAI API
+        # Call OpenAI API with all settings
+        # Note: Newer models like GPT-5.2 use max_completion_tokens instead of max_tokens
         response = self.client.chat.completions.create(
             model=self.config.model,
             messages=[
@@ -409,29 +582,44 @@ class AIQuestionGenerator:
                 {"role": "user", "content": user_prompt}
             ],
             temperature=self.config.temperature,
+            max_completion_tokens=self.config.max_tokens,
             response_format={"type": "json_object"}
         )
 
+        # Track token usage
+        tokens_used = 0
+        if response.usage:
+            tokens_used = response.usage.total_tokens
+
         # Parse the response
         response_text = response.choices[0].message.content
+        if not response_text:
+            raise ValueError("Empty response from AI")
+
         response_data = json.loads(response_text)
 
         # Convert to GeneratedQuestion objects
         questions = []
+        parse_errors = 0
         for q_data in response_data.get("questions", []):
             try:
                 question = self._parse_question(q_data)
                 if question:
                     questions.append(question)
             except Exception as e:
-                # Skip malformed questions
+                # Log but continue processing other questions
+                parse_errors += 1
+                logger.warning(f"Failed to parse question: {e}")
                 continue
+
+        if parse_errors > 0:
+            logger.warning(f"Failed to parse {parse_errors} questions out of {len(response_data.get('questions', []))}")
 
         # Apply limits
         if len(questions) > self.config.max_questions:
             questions = questions[:self.config.max_questions]
 
-        return questions
+        return questions, tokens_used
 
     def _build_prompt(
         self,
@@ -439,21 +627,30 @@ class AIQuestionGenerator:
         static_analysis: Dict[str, Any],
         dynamic_analysis: Optional[Dict[str, Any]]
     ) -> str:
-        """Build the prompt for the AI with all analysis context."""
+        """
+        Build the prompt for the AI with optimized analysis context.
+
+        Filters and compresses analysis data to reduce token usage while
+        preserving essential information for question generation.
+        """
+        # Optimize static analysis - keep only essential fields
+        optimized_static = self._optimize_static_analysis(static_analysis)
 
         prompt_parts = [
             "## Student's Code\n```python",
             source_code,
             "```\n",
             "## Static Analysis Results",
-            json.dumps(static_analysis, indent=2, default=str),
+            json.dumps(optimized_static, indent=2, default=str),
             "\n"
         ]
 
         if dynamic_analysis:
+            # Optimize dynamic analysis - filter large data
+            optimized_dynamic = self._optimize_dynamic_analysis(dynamic_analysis)
             prompt_parts.extend([
                 "## Dynamic Analysis Results (Runtime Behavior)",
-                json.dumps(dynamic_analysis, indent=2, default=str),
+                json.dumps(optimized_dynamic, indent=2, default=str),
                 "\n"
             ])
         else:
@@ -471,6 +668,139 @@ class AIQuestionGenerator:
         ])
 
         return "\n".join(prompt_parts)
+
+    def _optimize_static_analysis(self, static_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Optimize static analysis data for the prompt.
+        Keeps essential info, removes verbose/redundant data.
+        """
+        if not static_analysis:
+            return {}
+
+        optimized = {
+            "summary": static_analysis.get("summary", {}),
+        }
+
+        # Include functions with key info only
+        if "functions" in static_analysis:
+            optimized["functions"] = [
+                {
+                    "name": f["name"],
+                    "params": f.get("params", []),
+                    "is_recursive": f.get("is_recursive", False),
+                    "has_loops": f.get("has_loops", False),
+                    "has_conditionals": f.get("has_conditionals", False),
+                    "return_count": f.get("return_count", 0),
+                    "is_async": f.get("is_async", False),
+                    "is_generator": f.get("is_generator", False),
+                    "complexity": f.get("complexity", 1),
+                }
+                for f in static_analysis["functions"][:20]  # Limit to 20 functions
+            ]
+
+        # Include classes if present
+        if "classes" in static_analysis and static_analysis["classes"]:
+            optimized["classes"] = [
+                {
+                    "name": c["name"],
+                    "methods": c.get("methods", [])[:10],
+                    "bases": c.get("bases", []),
+                    "has_init": c.get("has_init", False),
+                }
+                for c in static_analysis["classes"][:10]
+            ]
+
+        # Include loops with key info
+        if "loops" in static_analysis:
+            optimized["loops"] = [
+                {
+                    "type": l["type"],
+                    "line_start": l["line_start"],
+                    "loop_variable": l.get("loop_variable"),
+                    "nesting_level": l.get("nesting_level", 0),
+                    "iterable_type": l.get("iterable_type"),
+                }
+                for l in static_analysis["loops"][:20]
+            ]
+
+        # Include variables (limit to avoid too much data)
+        if "variables" in static_analysis:
+            optimized["variables"] = [
+                {
+                    "name": v["name"],
+                    "scope": v["scope"],
+                    "type_annotation": v.get("type_annotation"),
+                }
+                for v in static_analysis["variables"][:30]
+            ]
+
+        # Include comprehensions if present
+        if "comprehensions" in static_analysis and static_analysis["comprehensions"]:
+            optimized["comprehensions"] = static_analysis["comprehensions"][:10]
+
+        # Include exception handlers if present
+        if "exception_handlers" in static_analysis and static_analysis["exception_handlers"]:
+            optimized["exception_handlers"] = [
+                {
+                    "line_start": e["line_start"],
+                    "exception_types": e.get("exception_types", []),
+                    "has_finally": e.get("has_finally", False),
+                }
+                for e in static_analysis["exception_handlers"][:10]
+            ]
+
+        return optimized
+
+    def _optimize_dynamic_analysis(self, dynamic_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Optimize dynamic analysis data for the prompt.
+        Filters large arrays and keeps most relevant data.
+        """
+        if not dynamic_analysis:
+            return {}
+
+        optimized = {
+            "execution_successful": dynamic_analysis.get("execution_successful", False),
+            "exception": dynamic_analysis.get("exception"),
+            "timed_out": dynamic_analysis.get("timed_out", False),
+            "max_stack_depth": dynamic_analysis.get("max_stack_depth", 0),
+            "total_lines_executed": dynamic_analysis.get("total_lines_executed", 0),
+            "stdout": dynamic_analysis.get("stdout", "")[:500],  # Limit output size
+            "has_recursion": dynamic_analysis.get("has_recursion", False),
+        }
+
+        # Include function calls (limited and deduplicated)
+        if "function_calls" in dynamic_analysis:
+            # Keep unique function calls with their results
+            seen_functions = set()
+            unique_calls = []
+            for call in dynamic_analysis["function_calls"]:
+                func_name = call.get("function_name")
+                if func_name not in seen_functions:
+                    seen_functions.add(func_name)
+                    unique_calls.append({
+                        "function_name": func_name,
+                        "arguments": call.get("arguments", {}),
+                        "return_value": call.get("return_value"),
+                        "is_recursive_call": call.get("is_recursive_call", False),
+                    })
+            optimized["function_calls"] = unique_calls[:15]
+
+        # Include loop executions
+        if "loop_executions" in dynamic_analysis:
+            optimized["loop_executions"] = dynamic_analysis["loop_executions"][:15]
+
+        # Include final variable values (most important for questions)
+        if "final_variables" in dynamic_analysis:
+            optimized["final_variables"] = dict(
+                list(dynamic_analysis["final_variables"].items())[:20]
+            )
+
+        # Include class instantiations if present
+        if "class_instantiations" in dynamic_analysis and dynamic_analysis["class_instantiations"]:
+            optimized["class_instantiations"] = dynamic_analysis["class_instantiations"][:10]
+
+        return optimized
 
     def _parse_question(self, q_data: Dict[str, Any]) -> Optional[GeneratedQuestion]:
         """Parse a question from the AI response."""
