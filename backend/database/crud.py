@@ -170,6 +170,7 @@ async def create_question(
     context: Optional[dict] = None,
     explanation: Optional[str] = None,
     difficulty: str = "medium",
+    answer_explanation: Optional[dict] = None,
 ) -> Question:
     """
     Create a new question.
@@ -188,6 +189,7 @@ async def create_question(
         context: Optional context dict
         explanation: Optional explanation
         difficulty: Difficulty level
+        answer_explanation: Optional rich explanation from the answer explainer LLM
 
     Returns:
         Created Question instance
@@ -208,6 +210,7 @@ async def create_question(
         context=context or {},
         explanation=explanation,
         difficulty=difficulty,
+        answer_explanation=answer_explanation,
     )
 
     db.add(question)

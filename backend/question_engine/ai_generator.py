@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from analyzers.static_analyzer import StaticAnalyzer
 from analyzers.dynamic_analyzer import DynamicAnalyzer
+from question_engine.answer_explainer import AnswerExplainer, ExplainerConfig, AnswerExplanation
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -136,6 +137,11 @@ class GenerationConfig:
     max_tokens: int = 4000  # Max tokens for response
     request_timeout: int = 60  # seconds
 
+    # Answer explainer settings
+    enable_explainer: bool = True  # Use a second LLM to verify answers and generate rich explanations
+    explainer_model: str = "gpt-5.2"
+    explainer_temperature: float = 0.3
+
 
 @dataclass
 class GenerationResult:
@@ -154,11 +160,17 @@ class GenerationResult:
     tokens_used: int = 0
     from_cache: bool = False
     retries_needed: int = 0
+    # Answer explanations from the second LLM
+    answer_explanations: List[Any] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             'questions': [q.to_dict() for q in self.questions],
+            'answer_explanations': [
+                e.to_dict() if hasattr(e, 'to_dict') else e
+                for e in self.answer_explanations
+            ],
             'metadata': {
                 'total_generated': self.total_generated,
                 'total_filtered': self.total_filtered,
@@ -401,9 +413,12 @@ class AIQuestionGenerator:
         self.static_analyzer = StaticAnalyzer()
         self.dynamic_analyzer = DynamicAnalyzer(timeout=self.config.dynamic_timeout)
 
+        # Store API key for sharing with the answer explainer
+        self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
+
         # Initialize OpenAI client with timeout
         self.client = OpenAI(
-            api_key=api_key or os.environ.get("OPENAI_API_KEY"),
+            api_key=self._api_key,
             timeout=self.config.request_timeout,
         )
         self._retries_needed = 0
@@ -498,6 +513,48 @@ class AIQuestionGenerator:
             result.errors.append(f"AI question generation failed: {e}")
             logger.error(f"AI generation failed after {self._retries_needed} retries: {e}")
             return result
+
+        # Step 4: Run the Answer Explainer (second LLM call)
+        if self.config.enable_explainer and result.questions:
+            try:
+                explainer_config = ExplainerConfig(
+                    model=self.config.explainer_model,
+                    temperature=self.config.explainer_temperature,
+                    max_retries=self.config.max_retries,
+                    retry_delay=self.config.retry_delay,
+                    request_timeout=self.config.request_timeout,
+                )
+                explainer = AnswerExplainer(explainer_config, api_key=self._api_key)
+
+                question_dicts = [q.to_dict() for q in result.questions]
+                explanations = explainer.explain_questions(
+                    questions=question_dicts,
+                    source_code=source_code,
+                    static_analysis=static_analysis,
+                    dynamic_analysis=dynamic_analysis,
+                )
+                result.answer_explanations = explanations
+
+                # Apply verified explanations back to questions
+                for i, explanation in enumerate(explanations):
+                    if i < len(result.questions):
+                        q = result.questions[i]
+                        # Update the question's explanation with the richer one
+                        if explanation.correct_answer_reasoning:
+                            q.explanation = explanation.correct_answer_reasoning
+                        # If the explainer found the answer was wrong, correct it
+                        if not explanation.is_answer_verified and explanation.corrected_answer is not None:
+                            result.warnings.append(
+                                f"Question '{q.question_text[:50]}...' had its answer corrected "
+                                f"from '{q.correct_answer}' to '{explanation.corrected_answer}'"
+                            )
+                            q.correct_answer = explanation.corrected_answer
+
+                logger.info(f"Answer explainer enriched {len(explanations)} questions")
+
+            except Exception as e:
+                result.warnings.append(f"Answer explainer encountered an error: {e}")
+                logger.warning(f"Answer explainer failed: {e}")
 
         # Calculate execution time
         end_time = time.time()

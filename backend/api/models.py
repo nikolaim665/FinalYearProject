@@ -116,6 +116,34 @@ class AnswerChoice(BaseModel):
     explanation: Optional[str] = None
 
 
+class WrongAnswerExplanation(BaseModel):
+    """Explanation of why a wrong answer choice is wrong."""
+    answer_text: str
+    explanation: str
+    common_misconception: Optional[str] = None
+
+
+class AnswerExplanationDetail(BaseModel):
+    """Rich explanation from the answer explainer LLM."""
+    verified_correct_answer: Optional[Any] = None
+    is_answer_verified: bool = True
+    correct_answer_reasoning: str = ""
+    code_references: List[str] = Field(
+        default=[],
+        description="References to specific lines of code"
+    )
+    analysis_references: List[str] = Field(
+        default=[],
+        description="References to static/dynamic analysis data"
+    )
+    wrong_answer_explanations: List[WrongAnswerExplanation] = Field(
+        default=[],
+        description="Explanations of why each wrong answer is wrong"
+    )
+    learning_tip: Optional[str] = None
+    corrected_answer: Optional[Any] = None
+
+
 class Question(BaseModel):
     """A generated question."""
     id: str = Field(description="Unique question identifier")
@@ -133,6 +161,10 @@ class Question(BaseModel):
     context: Dict[str, Any] = {}
     explanation: Optional[str] = None
     difficulty: str = "medium"
+    answer_explanation: Optional[AnswerExplanationDetail] = Field(
+        default=None,
+        description="Rich explanation from the answer explainer LLM with verification, code references, and wrong answer explanations"
+    )
 
     class Config:
         json_schema_extra = {

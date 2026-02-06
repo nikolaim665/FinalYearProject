@@ -1,0 +1,579 @@
+================================================================================
+                    QLC PROJECT - ANALYZERS & API EXPLANATION
+================================================================================
+
+This document explains how the Static Analyzer, Dynamic Analyzer, and API work
+together to generate comprehension questions about student code.
+
+================================================================================
+                              OVERVIEW / PIPELINE
+================================================================================
+
+The system follows this flow:
+
+    Student Code
+         |
+         v
+    +------------------+
+    | Static Analyzer  |  <-- Parses code WITHOUT executing it (uses AST)
+    +------------------+
+         |
+         v
+    +------------------+
+    | Dynamic Analyzer |  <-- Executes code and traces runtime behavior
+    +------------------+
+         |
+         v
+    Both results are sent to:
+         |
+         v
+    +------------------+
+    | AI Generator     |  <-- GPT-5.2 generates questions based on analysis
+    +------------------+
+         |
+         v
+    +------------------+
+    | Answer Validator |  <-- Validates student answers (semantic matching)
+    +------------------+
+
+================================================================================
+                           STATIC ANALYZER
+================================================================================
+
+FILE: backend/analyzers/static_analyzer.py
+
+PURPOSE:
+--------
+Analyzes Python source code WITHOUT executing it. Uses Python's built-in AST
+(Abstract Syntax Tree) module to parse and extract structural information.
+
+HOW IT WORKS:
+-------------
+1. The source code is parsed into an AST using `ast.parse(source_code)`
+2. A custom `CodeVisitor` class (inherits from `ast.NodeVisitor`) walks the tree
+3. Different `visit_*` methods are called for each node type in the tree
+4. Information is collected into dataclass objects
+
+KEY COMPONENTS:
+
+1. CodeVisitor Class (line 170)
+   - Inherits from ast.NodeVisitor
+   - Implements visit_* methods for each AST node type
+   - Tracks context (current function, current class, loop depth)
+   - Collects information into lists of dataclass objects
+
+2. Visit Methods (what gets extracted):
+
+   visit_FunctionDef / visit_AsyncFunctionDef:
+   - Function name, parameters, line numbers
+   - Is it recursive? (checks if function calls itself)
+   - Has loops? Has conditionals?
+   - Return count, decorators, docstring
+   - Is it async? Is it a generator (has yield)?
+   - Calculates cyclomatic complexity
+   - Tracks nested functions
+
+   visit_ClassDef:
+   - Class name, base classes (inheritance)
+   - Methods list, class variables, instance variables
+   - Has __init__? Is dataclass?
+   - Decorators and docstring
+
+   visit_For / visit_While:
+   - Loop type ('for' or 'while')
+   - Line numbers, loop variable
+   - Nesting level (how deep in nested loops)
+   - Iterable type (range, list, dict, etc.)
+   - Has break? Has continue? Has else clause?
+
+   visit_If:
+   - Has elif? Has else?
+   - Count of elif branches
+   - Is it a ternary expression?
+
+   visit_Call:
+   - Function being called
+   - Number of arguments, keyword arguments
+   - Is it a method call? (obj.method())
+
+   visit_Try:
+   - Exception types being caught
+   - Has except? Has finally? Has else?
+   - Is it a bare except (no exception type)?
+
+   visit_Import / visit_ImportFrom:
+   - Module name, imported names
+   - Aliases
+
+   visit_ListComp / visit_SetComp / visit_DictComp / visit_GeneratorExp:
+   - Comprehension type
+   - Loop variable, has condition?
+   - Nested count (multiple for clauses)
+
+   visit_With / visit_AsyncWith:
+   - Context expression
+   - Variable name (as variable)
+   - Is async?
+
+   visit_Assign / visit_AnnAssign:
+   - Variable name, line, scope
+   - Type annotation (if present)
+   - Is constant? (UPPER_CASE)
+   - Is class variable? Is instance variable?
+
+3. StaticAnalyzer Class (line 714)
+   - Main entry point: analyze(source_code) method
+   - Creates CodeVisitor, walks AST, compiles results
+   - Returns a dictionary with all extracted information
+   - Includes a "summary" section with counts
+
+OUTPUT STRUCTURE:
+-----------------
+{
+    "functions": [...],           # List of function details
+    "variables": [...],           # List of variable details
+    "loops": [...],               # List of loop details
+    "conditionals": [...],        # List of if statement details
+    "function_calls": [...],      # List of function call details
+    "classes": [...],             # List of class details
+    "exception_handlers": [...],  # List of try/except details
+    "imports": [...],             # List of import details
+    "comprehensions": [...],      # List of comprehension details
+    "context_managers": [...],    # List of with statement details
+    "summary": {
+        "total_functions": int,
+        "total_variables": int,
+        "total_loops": int,
+        "total_conditionals": int,
+        "has_recursion": bool,
+        "total_lines": int,
+        "total_classes": int,
+        "total_methods": int,
+        "total_exception_handlers": int,
+        "total_imports": int,
+        "total_comprehensions": int,
+        "total_context_managers": int,
+        "has_async": bool,
+        "has_generators": bool,
+        "has_classes": bool,
+        "has_decorators": bool,
+        "total_complexity": int,
+        "average_complexity": float
+    }
+}
+
+WHAT STATIC ANALYSIS KNOWS:
+---------------------------
+- Structure of the code (what's defined where)
+- Relationships between components (function A calls function B)
+- Code patterns (recursion, nesting, complexity)
+- Type annotations (if present)
+- DOES NOT know actual runtime values
+- DOES NOT know how many times loops actually run
+- DOES NOT know what functions actually return
+
+================================================================================
+                           DYNAMIC ANALYZER
+================================================================================
+
+FILE: backend/analyzers/dynamic_analyzer.py
+
+PURPOSE:
+--------
+Executes Python code in a controlled environment and collects runtime
+information using sys.settrace(). This gives us ACTUAL values and behavior.
+
+HOW IT WORKS:
+-------------
+1. Creates an ExecutionTracer that hooks into Python's trace mechanism
+2. Executes the code using exec() with the tracer active
+3. The tracer's callback is called for every line executed, function call, return
+4. Runtime information is collected into an ExecutionTrace dataclass
+5. Timeout enforcement using ThreadPoolExecutor (default 5 seconds)
+
+KEY COMPONENTS:
+
+1. ExecutionTracer Class (line 99)
+   - Sets up sys.settrace(self.trace_calls)
+   - trace_calls method is called for every execution event
+
+   Events handled:
+   - 'call': A function is being called
+   - 'line': A line is about to execute
+   - 'return': A function is returning
+   - 'exception': An exception occurred
+
+   _handle_call (line 163):
+   - Tracks stack depth (for recursion detection)
+   - Captures function arguments with actual values
+   - Detects if this is a recursive call
+   - Tracks class instantiations (when __init__ is called)
+
+   _handle_line (line 248):
+   - Records which lines are executed (execution flow)
+   - Detects loops by tracking revisited lines
+   - Captures variable snapshots (name, value, type, line, scope)
+
+   _handle_return (line 298):
+   - Records what functions return
+   - Updates the function call record with return value
+
+   _handle_exception (line 319):
+   - Records exception type and message
+   - Captures full traceback
+
+2. DynamicAnalyzer Class (line 379)
+   - Main entry point: analyze(source_code, test_inputs) method
+   - Creates controlled execution environment
+   - Enforces timeout using ThreadPoolExecutor
+   - Captures stdout/stderr output
+   - Compiles results into dictionary
+
+3. Safety Features:
+   - MAX_SNAPSHOTS = 1000 (prevents memory issues)
+   - MAX_EXECUTION_FLOW = 5000 (limits trace size)
+   - MAX_FUNCTION_CALLS = 500 (limits stored calls)
+   - MAX_VALUE_SIZE = 1000 chars (truncates large values)
+   - Timeout enforcement (default 5 seconds)
+   - Output size limits (MAX_OUTPUT_SIZE = 10000)
+
+4. _safe_serialize Method (line 213):
+   - Safely converts Python objects to JSON-serializable format
+   - Handles: None, bool, int, float, str, list, tuple, dict, set
+   - Truncates large strings and collections
+   - For complex objects: returns repr() or type name
+   - Has max_depth parameter to prevent infinite recursion
+
+OUTPUT STRUCTURE:
+-----------------
+{
+    "execution_successful": bool,       # Did it complete without error?
+    "exception": str or None,           # Error message if failed
+    "exception_traceback": str or None, # Full traceback
+    "timed_out": bool,                  # Did it exceed timeout?
+    "max_stack_depth": int,             # Deepest call stack
+    "total_lines_executed": int,        # Total line executions
+    "unique_lines_executed": int,       # Unique lines executed
+    "execution_flow": [int, ...],       # Line numbers in order
+    "stdout": str,                      # Captured print output
+    "stderr": str,                      # Captured error output
+    "execution_time_ms": float,         # How long it took
+    "memory_peak_mb": float,            # Peak memory usage
+    "function_calls": [
+        {
+            "function_name": str,
+            "line": int,
+            "arguments": {name: value, ...},
+            "return_value": any,
+            "stack_depth": int,
+            "is_recursive_call": bool
+        },
+        ...
+    ],
+    "total_function_calls": int,
+    "unique_functions_called": [str, ...],
+    "loop_executions": [
+        {
+            "line_start": int,
+            "iteration_count": int,     # ACTUAL number of iterations!
+            "loop_type": "for" or "while"
+        },
+        ...
+    ],
+    "variable_snapshots": [
+        {
+            "name": str,
+            "value": any,               # ACTUAL runtime value!
+            "value_type": str,
+            "line": int,
+            "scope": str
+        },
+        ...
+    ],
+    "final_variables": {
+        "scope.name": {"value": any, "type": str},
+        ...
+    },
+    "class_instantiations": [
+        {
+            "class_name": str,
+            "line": int,
+            "arguments": {...}
+        },
+        ...
+    ],
+    "generator_yields": [...],
+    "has_recursion": bool
+}
+
+WHAT DYNAMIC ANALYSIS KNOWS:
+----------------------------
+- ACTUAL values of variables at runtime
+- ACTUAL number of loop iterations
+- ACTUAL return values from functions
+- ACTUAL arguments passed to functions
+- Execution order (which lines ran and when)
+- What got printed (stdout)
+- Whether it crashed and why
+- Recursion depth
+- DOES NOT know code structure (that's static analysis)
+
+================================================================================
+                              API ROUTES
+================================================================================
+
+FILE: backend/api/routes_db.py
+
+PURPOSE:
+--------
+FastAPI REST endpoints that orchestrate the full pipeline and persist data.
+
+KEY ENDPOINTS:
+
+1. POST /api/submit-code (line 87)
+   -----------------------------------------------------------------
+   This is the main endpoint that triggers question generation.
+
+   Flow:
+   a) Receives code submission request
+   b) Creates submission record in database
+   c) Creates GenerationConfig from request parameters
+   d) Creates AIQuestionGenerator with config
+   e) Calls generator.generate(code, test_inputs):
+      - Static analysis runs
+      - Dynamic analysis runs
+      - Both results sent to GPT-5.2
+      - AI generates questions
+   f) Stores each question in database
+   g) Updates submission with analysis results
+   h) Returns questions and metadata
+
+   Request body:
+   {
+       "code": "def factorial(n): ...",
+       "max_questions": 5,
+       "test_inputs": {"n": 5},           # Optional: inputs for execution
+       "allowed_levels": ["atom", "block"], # Optional: filter levels
+       "allowed_types": ["multiple_choice"], # Optional: filter types
+       "allowed_difficulties": ["easy"]      # Optional: filter difficulty
+   }
+
+   Response:
+   {
+       "submission_id": "sub_abc123",
+       "questions": [...],
+       "metadata": {
+           "total_generated": 5,
+           "execution_successful": true,
+           "execution_time_ms": 1234.5
+       },
+       "analysis_summary": {
+           "total_functions": 1,
+           "has_recursion": true,
+           ...
+       },
+       "errors": [],
+       "warnings": []
+   }
+
+2. POST /api/submit-answer (line 270)
+   -----------------------------------------------------------------
+   Validates a student's answer to a question.
+
+   Flow:
+   a) Gets the question from database
+   b) Based on question type, validates the answer:
+      - MULTIPLE_CHOICE: Exact match
+      - NUMERIC: Float comparison with tolerance
+      - TRUE_FALSE: Case-insensitive match
+      - FILL_IN_BLANK / SHORT_ANSWER: Uses AnswerValidator for semantic matching
+   c) Stores the answer in database
+   d) Returns feedback
+
+   Request:
+   {
+       "submission_id": "sub_abc123",
+       "question_id": "q_xyz789",
+       "answer": "factorial"
+   }
+
+   Response:
+   {
+       "submission_id": "sub_abc123",
+       "question_id": "q_xyz789",
+       "feedback": {
+           "is_correct": true,
+           "explanation": "Correct! The function uses recursion...",
+           "correct_answer": null  # Only shown if wrong
+       }
+   }
+
+   CURRENT LIMITATION:
+   The explanation currently just uses the pre-generated explanation
+   from the question. This is where you could add an LLM call to
+   generate a more personalized explanation based on:
+   - The student's answer
+   - The correct answer
+   - The analysis data
+   - Why their answer might have been wrong
+
+3. GET /api/submission/{submission_id} (line 424)
+   -----------------------------------------------------------------
+   Retrieves a previous submission with all its questions.
+
+4. GET /api/submissions (line 502)
+   -----------------------------------------------------------------
+   Lists all submissions (paginated).
+
+5. GET /api/health (line 51)
+   -----------------------------------------------------------------
+   Health check - tests all components.
+
+6. GET /api/templates (line 541)
+   -----------------------------------------------------------------
+   Returns info about the question generation system.
+
+================================================================================
+                    DATA AVAILABLE FOR EXPLANATIONS
+================================================================================
+
+When a student answers incorrectly, you have access to:
+
+FROM THE QUESTION:
+------------------
+- question_text: The question that was asked
+- correct_answer: The correct answer (with alternatives)
+- alternative_answers: Other acceptable answers
+- explanation: Pre-generated explanation from GPT-5.2
+- context: {
+    "line_number": 5,
+    "variable_name": "x",
+    "function_name": "factorial",
+    "data_type": "int",
+    "loop_type": "for"
+  }
+- question_type: multiple_choice, fill_in_blank, numeric, short_answer, true_false
+- question_level: atom, block, relational, macro
+
+FROM THE STUDENT:
+-----------------
+- student_answer: What they submitted
+
+FROM STATIC ANALYSIS (stored in submission):
+--------------------------------------------
+- Code structure
+- Function definitions and their properties
+- Variable definitions
+- Loop structures
+- Class definitions
+- Complexity metrics
+
+FROM DYNAMIC ANALYSIS (stored in submission):
+---------------------------------------------
+- Actual variable values
+- Actual loop iteration counts
+- Actual function return values
+- Execution flow
+- What got printed
+
+================================================================================
+                    ADDING LLM EXPLANATIONS
+================================================================================
+
+To add personalized explanations when a student answers wrong, you would:
+
+1. In routes_db.py, in the submit_answer endpoint (around line 355-380):
+
+   Current code just returns a template explanation:
+   ```python
+   explanation = f"Incorrect. The correct answer is: {correct_answer_value}. {question.explanation or ''}"
+   ```
+
+2. You could add an LLM call here:
+
+   ```python
+   # After determining the answer is incorrect...
+
+   # Get the original submission to access analysis data
+   submission = await crud.get_submission(db, request.submission_id)
+
+   # Create context for LLM
+   explanation_context = {
+       "question": question.question_text,
+       "correct_answer": correct_answer_value,
+       "student_answer": request.answer,
+       "alternative_answers": alternative_answers,
+       "question_context": question.context,
+       "static_analysis": submission.analysis_summary,
+       "code": submission.code,  # The original code
+   }
+
+   # Call LLM to generate explanation
+   explanation = await generate_personalized_explanation(explanation_context)
+   ```
+
+3. The LLM for explanations could be:
+   - The same OpenAI API (GPT-5.2)
+   - A local model via Ollama (cheaper, offline)
+   - A smaller/faster model (explanations are simpler than question generation)
+
+4. The explanation prompt could analyze:
+   - What concept the student might have misunderstood
+   - Common misconceptions for this type of question
+   - Reference to specific lines in their code
+   - Step-by-step walkthrough of why the correct answer is right
+
+================================================================================
+                         EXAMPLE FLOW
+================================================================================
+
+Student submits code:
+```python
+def factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+result = factorial(5)
+```
+
+STATIC ANALYSIS EXTRACTS:
+-------------------------
+- Function "factorial" exists
+- It has 1 parameter "n"
+- It IS recursive (calls itself)
+- It HAS conditionals
+- Line 1-4
+- 2 return statements
+
+DYNAMIC ANALYSIS (with test_inputs=None, runs the code):
+--------------------------------------------------------
+- factorial called with n=5
+- factorial called with n=4 (recursive)
+- factorial called with n=3 (recursive)
+- factorial called with n=2 (recursive)
+- factorial called with n=1 (base case)
+- Returns: 5 -> 4 -> 3 -> 2 -> 1 -> returns 1
+- Final value of 'result' = 120
+- Max stack depth = 5
+- No exceptions
+
+AI GENERATES QUESTIONS LIKE:
+----------------------------
+1. "What is the final value of 'result'?" -> Answer: 120
+2. "How many times is factorial() called?" -> Answer: 5
+3. "What type of function is factorial?" -> Answer: recursive
+4. "What is the base case condition?" -> Answer: n <= 1
+
+STUDENT ANSWERS "factorial is a loop":
+--------------------------------------
+LLM explanation could say:
+"That's not quite right. While both loops and recursion repeat operations,
+factorial() is a RECURSIVE function because it calls ITSELF on line 4.
+A loop uses 'for' or 'while' keywords. Recursion uses a function calling
+itself with a modified argument. In this case, factorial(n) calls
+factorial(n-1) until n reaches 1 (the base case)."
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================

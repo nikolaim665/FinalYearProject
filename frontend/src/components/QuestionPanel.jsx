@@ -11,6 +11,12 @@ import {
   Trophy,
   Target,
   Lightbulb,
+  Code,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Database,
 } from 'lucide-react';
 
 const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
@@ -18,6 +24,7 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
   const [answers, setAnswers] = useState({});
   const [feedback, setFeedback] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [showDetailedExplanation, setShowDetailedExplanation] = useState({});
 
   // Calculate score
   const answeredQuestions = Object.keys(feedback).length;
@@ -306,69 +313,188 @@ const QuestionPanel = ({ questions, submissionId, onAnswerSubmit }) => {
 
         {/* Answer input or feedback */}
         {currentFeedback ? (
-          <div
-            className={`p-5 rounded-2xl border-2 transition-all duration-300 ${
-              currentFeedback.is_correct
-                ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500'
-                : 'bg-rose-50 dark:bg-rose-900/20 border-rose-500'
-            }`}
-          >
-            <div className="flex items-start gap-4">
-              <div className={`p-2 rounded-xl ${
+          <div className="space-y-4">
+            {/* Main feedback card */}
+            <div
+              className={`p-5 rounded-2xl border-2 transition-all duration-300 ${
                 currentFeedback.is_correct
-                  ? 'bg-emerald-500'
-                  : 'bg-rose-500'
-              }`}>
-                {currentFeedback.is_correct ? (
-                  <CheckCircle className="w-6 h-6 text-white" />
-                ) : (
-                  <XCircle className="w-6 h-6 text-white" />
-                )}
-              </div>
-              <div className="flex-1">
-                <p className={`text-lg font-semibold mb-2 ${
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500'
+                  : 'bg-rose-50 dark:bg-rose-900/20 border-rose-500'
+              }`}
+            >
+              <div className="flex items-start gap-4">
+                <div className={`p-2 rounded-xl ${
                   currentFeedback.is_correct
-                    ? 'text-emerald-900 dark:text-emerald-100'
-                    : 'text-rose-900 dark:text-rose-100'
+                    ? 'bg-emerald-500'
+                    : 'bg-rose-500'
                 }`}>
-                  {currentFeedback.is_correct ? 'Correct!' : 'Incorrect'}
-                </p>
-
-                {currentFeedback.explanation && (
-                  <div className={`p-3 rounded-lg mb-3 ${
+                  {currentFeedback.is_correct ? (
+                    <CheckCircle className="w-6 h-6 text-white" />
+                  ) : (
+                    <XCircle className="w-6 h-6 text-white" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-lg font-semibold mb-2 ${
                     currentFeedback.is_correct
-                      ? 'bg-emerald-100 dark:bg-emerald-900/30'
-                      : 'bg-rose-100 dark:bg-rose-900/30'
+                      ? 'text-emerald-900 dark:text-emerald-100'
+                      : 'text-rose-900 dark:text-rose-100'
                   }`}>
-                    <div className="flex items-start gap-2">
-                      <Lightbulb className={`w-4 h-4 mt-0.5 ${
-                        currentFeedback.is_correct
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-rose-600 dark:text-rose-400'
-                      }`} />
-                      <p className={`text-sm ${
-                        currentFeedback.is_correct
-                          ? 'text-emerald-800 dark:text-emerald-200'
-                          : 'text-rose-800 dark:text-rose-200'
-                      }`}>
-                        {currentFeedback.explanation}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {currentFeedback.correct_answer && !currentFeedback.is_correct && (
-                  <p className="text-sm text-rose-700 dark:text-rose-300 mb-2">
-                    <span className="font-medium">Correct answer:</span> {String(currentFeedback.correct_answer)}
+                    {currentFeedback.is_correct ? 'Correct!' : 'Incorrect'}
                   </p>
-                )}
 
-                <div className="text-sm">
-                  <span className="font-medium text-slate-600 dark:text-slate-400">Your answer: </span>
-                  <span className="text-slate-700 dark:text-slate-300">{String(currentAnswer)}</span>
+                  {currentFeedback.explanation && (
+                    <div className={`p-3 rounded-lg mb-3 ${
+                      currentFeedback.is_correct
+                        ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                        : 'bg-rose-100 dark:bg-rose-900/30'
+                    }`}>
+                      <div className="flex items-start gap-2">
+                        <Lightbulb className={`w-4 h-4 mt-0.5 ${
+                          currentFeedback.is_correct
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-rose-600 dark:text-rose-400'
+                        }`} />
+                        <p className={`text-sm ${
+                          currentFeedback.is_correct
+                            ? 'text-emerald-800 dark:text-emerald-200'
+                            : 'text-rose-800 dark:text-rose-200'
+                        }`}>
+                          {currentFeedback.explanation}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {currentFeedback.correct_answer && !currentFeedback.is_correct && (
+                    <p className="text-sm text-rose-700 dark:text-rose-300 mb-2">
+                      <span className="font-medium">Correct answer:</span> {String(currentFeedback.correct_answer)}
+                    </p>
+                  )}
+
+                  <div className="text-sm">
+                    <span className="font-medium text-slate-600 dark:text-slate-400">Your answer: </span>
+                    <span className="text-slate-700 dark:text-slate-300">{String(currentAnswer)}</span>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Detailed Explanation Section (from Answer Explainer LLM) */}
+            {currentQuestion.answer_explanation && (
+              <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden">
+                <button
+                  onClick={() => setShowDetailedExplanation({
+                    ...showDetailedExplanation,
+                    [currentQuestion.id]: !showDetailedExplanation[currentQuestion.id]
+                  })}
+                  className="w-full px-5 py-3 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-indigo-500" />
+                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      Detailed Explanation
+                    </span>
+                  </div>
+                  {showDetailedExplanation[currentQuestion.id] ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+
+                {showDetailedExplanation[currentQuestion.id] && (
+                  <div className="p-5 space-y-4 bg-white dark:bg-slate-900">
+                    {/* Why the correct answer is correct */}
+                    {currentQuestion.answer_explanation.correct_answer_reasoning && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          Why the correct answer is correct
+                        </h4>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed pl-6">
+                          {currentQuestion.answer_explanation.correct_answer_reasoning}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Code References */}
+                    {currentQuestion.answer_explanation.code_references?.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                          <Code className="w-4 h-4 text-blue-500" />
+                          Code References
+                        </h4>
+                        <ul className="space-y-1 pl-6">
+                          {currentQuestion.answer_explanation.code_references.map((ref, idx) => (
+                            <li key={idx} className="text-sm text-slate-600 dark:text-slate-400 font-mono bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-lg">
+                              {ref}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Analysis References */}
+                    {currentQuestion.answer_explanation.analysis_references?.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                          <Database className="w-4 h-4 text-purple-500" />
+                          Analysis References
+                        </h4>
+                        <ul className="space-y-1 pl-6">
+                          {currentQuestion.answer_explanation.analysis_references.map((ref, idx) => (
+                            <li key={idx} className="text-sm text-slate-600 dark:text-slate-400 bg-purple-50 dark:bg-purple-900/20 px-3 py-1.5 rounded-lg">
+                              {ref}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Wrong Answer Explanations */}
+                    {currentQuestion.answer_explanation.wrong_answer_explanations?.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
+                          <XCircle className="w-4 h-4 text-rose-500" />
+                          Why other answers are wrong
+                        </h4>
+                        <div className="space-y-2 pl-6">
+                          {currentQuestion.answer_explanation.wrong_answer_explanations.map((we, idx) => (
+                            <div key={idx} className="bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-800 rounded-lg p-3">
+                              <p className="text-sm font-medium text-rose-800 dark:text-rose-200 mb-1">
+                                "{we.answer_text}"
+                              </p>
+                              <p className="text-sm text-rose-700 dark:text-rose-300">
+                                {we.explanation}
+                              </p>
+                              {we.common_misconception && (
+                                <p className="text-xs text-rose-500 dark:text-rose-400 mt-1 italic">
+                                  Common misconception: {we.common_misconception}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Learning Tip */}
+                    {currentQuestion.answer_explanation.learning_tip && (
+                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                        <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-1 flex items-center gap-2">
+                          <Lightbulb className="w-4 h-4" />
+                          Learning Tip
+                        </h4>
+                        <p className="text-sm text-amber-700 dark:text-amber-300 pl-6">
+                          {currentQuestion.answer_explanation.learning_tip}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">

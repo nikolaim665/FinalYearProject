@@ -178,6 +178,9 @@ class Question(Base):
     explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     difficulty: Mapped[str] = mapped_column(String(20), default="medium")
 
+    # Rich explanation from the answer explainer LLM
+    answer_explanation: Mapped[Optional[dict]] = mapped_column(JSONEncodedDict, nullable=True)
+
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
