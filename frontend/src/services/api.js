@@ -75,4 +75,15 @@ export const listTemplates = async () => {
   }
 };
 
+// Evaluate all questions in a submission with the LLM judge
+export const evaluateSubmission = async (submissionId) => {
+  try {
+    const response = await api.post(`/evaluate/${submissionId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Evaluation failed:', error);
+    throw error;
+  }
+};
+
 export default api;

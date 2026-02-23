@@ -325,3 +325,69 @@ class ErrorResponse(BaseModel):
                 "status_code": 400
             }
         }
+
+
+# --- LLM Judge Evaluation Models ---
+
+class QuestionEvaluationResponse(BaseModel):
+    """Evaluation of a single question by the LLM judge."""
+    question_id: str
+    question_text: str
+    scores: Dict[str, int] = Field(
+        description="Per-dimension scores (1-5): accuracy, clarity, pedagogical_value, code_specificity, difficulty_calibration"
+    )
+    overall_score: float = Field(description="Weighted overall score (accuracy and pedagogical_value count 2x)")
+    explanation: str = Field(description="Judge's reasoning paragraph")
+    issues: List[str] = Field(default=[], description="Plain-English problems identified (empty if none)")
+    is_flagged: bool = Field(description="True if overall < 3.0 or accuracy < 3")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "question_id": "q_abc123",
+                "question_text": "What is the return value of factorial(5)?",
+                "scores": {
+                    "accuracy": 5,
+                    "clarity": 4,
+                    "pedagogical_value": 4,
+                    "code_specificity": 5,
+                    "difficulty_calibration": 3
+                },
+                "overall_score": 4.43,
+                "explanation": "The correct answer (120) is verified by dynamic analysis...",
+                "issues": [],
+                "is_flagged": False
+            }
+        }
+
+
+class EvaluationResultResponse(BaseModel):
+    """Complete evaluation of all questions in a submission."""
+    submission_id: str
+    question_evaluations: List[QuestionEvaluationResponse]
+    aggregate: Dict[str, Any] = Field(
+        description="Aggregate stats: mean scores per dimension, total questions, flagged count"
+    )
+    tokens_used: int
+    evaluation_time_ms: float
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "submission_id": "sub_abc123",
+                "question_evaluations": [],
+                "aggregate": {
+                    "mean_overall": 3.8,
+                    "mean_accuracy": 4.1,
+                    "mean_clarity": 3.9,
+                    "mean_pedagogical_value": 3.6,
+                    "mean_code_specificity": 3.4,
+                    "mean_difficulty_calibration": 3.7,
+                    "total_questions": 8,
+                    "questions_flagged": 2,
+                    "questions_flagged_ids": ["q_abc123", "q_def456"]
+                },
+                "tokens_used": 4200,
+                "evaluation_time_ms": 8500.0
+            }
+        }

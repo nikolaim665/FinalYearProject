@@ -27,7 +27,9 @@ from api.models import (
     AnswerFeedback,
     QuestionLevelEnum,
     QuestionTypeEnum,
-    StrategyEnum
+    StrategyEnum,
+    QuestionEvaluationResponse,
+    EvaluationResultResponse,
 )
 from question_engine.generator import (
     QuestionGenerator,
@@ -399,6 +401,76 @@ def get_submission(submission_id: str):
         errors=result.errors,
         warnings=result.warnings
     )
+
+
+@router.post(
+    "/evaluate/{submission_id}",
+    response_model=EvaluationResultResponse,
+    tags=["Evaluation"]
+)
+def evaluate_submission(submission_id: str):
+    """
+    Evaluate the quality of all questions generated for a submission.
+
+    Calls the LLM judge once per question to score it on 5 pedagogical dimensions:
+    - **accuracy** (2x weight): Is the correct answer verifiably correct?
+    - **clarity**: Is the question unambiguous?
+    - **pedagogical_value** (2x weight): Does it test genuine understanding?
+    - **code_specificity**: Is it specific to this code?
+    - **difficulty_calibration**: Does the difficulty label match cognitive demand?
+
+    Questions with `overall_score < 3.0` or `accuracy < 3` are flagged.
+
+    **Note:** This endpoint makes N API calls (one per question) and is on-demand only.
+    """
+    if submission_id not in submissions_store:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Submission {submission_id} not found"
+        )
+
+    submission = submissions_store[submission_id]
+
+    try:
+        from question_engine.judge import LLMJudge, JudgeConfig
+        judge_config = JudgeConfig()
+        judge = LLMJudge(judge_config)
+
+        # Add submission_id to the data dict for the result
+        submission_data = dict(submission)
+        submission_data["submission_id"] = submission_id
+
+        result = judge.evaluate_submission(submission_data)
+
+        # Convert to Pydantic response model
+        evaluations = [
+            QuestionEvaluationResponse(
+                question_id=e.question_id,
+                question_text=e.question_text,
+                scores=e.scores,
+                overall_score=e.overall_score,
+                explanation=e.explanation,
+                issues=e.issues,
+                is_flagged=e.is_flagged,
+            )
+            for e in result.question_evaluations
+        ]
+
+        return EvaluationResultResponse(
+            submission_id=result.submission_id,
+            question_evaluations=evaluations,
+            aggregate=result.aggregate,
+            tokens_used=result.tokens_used,
+            evaluation_time_ms=result.evaluation_time_ms,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Evaluation failed: {str(e)}"
+        )
 
 
 @router.get(

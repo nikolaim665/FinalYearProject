@@ -19,7 +19,7 @@ from pathlib import Path
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from api.routes_db import router
+from api.routes import router
 from api.models import ErrorResponse
 
 # Create FastAPI app
