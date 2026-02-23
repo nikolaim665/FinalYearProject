@@ -143,20 +143,20 @@ def submit_code(request: CodeSubmissionRequest):
     """
     try:
         # Create generation config from request
+        # Note: strategy is handled via AI prompts, not config parameter
         config = GenerationConfig(
-            max_questions=request.max_questions,
-            strategy=map_strategy_enum(request.strategy)
+            max_questions=request.max_questions
         )
 
-        # Apply filters if provided
+        # Apply filters if provided (use include_* attributes with string values)
         if request.allowed_levels:
-            config.allowed_levels = {map_level_enum(l) for l in request.allowed_levels}
+            config.include_levels = [l.value for l in request.allowed_levels]
 
         if request.allowed_types:
-            config.allowed_types = {map_type_enum(t) for t in request.allowed_types}
+            config.include_types = [t.value for t in request.allowed_types]
 
         if request.allowed_difficulties:
-            config.allowed_difficulties = set(request.allowed_difficulties)
+            config.include_difficulties = list(request.allowed_difficulties)
 
         # Generate questions
         generator = QuestionGenerator(config)

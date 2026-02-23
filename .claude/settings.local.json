@@ -31,7 +31,14 @@
       "Bash(xargs:*)",
       "Bash(alembic stamp:*)",
       "Bash(sqlite3:*)",
-      "Bash(.venv/bin/python -m pytest:*)"
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(ls:*)",
+      "Bash(git -C /mnt/c/Users/nimos/dev/FinalYearProject log --oneline -20)",
+      "Bash(docker:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker-compose:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(.venv/bin/python:*)"
     ],
     "deny": [],
     "ask": []

@@ -4,6 +4,9 @@ FastAPI Application
 Main FastAPI application for the QLC (Questions about Learners' Code) system.
 """
 
+from dotenv import load_dotenv
+load_dotenv(override=True)  # .env takes precedence over system environment variables
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
