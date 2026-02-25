@@ -195,7 +195,7 @@ const CodeEditor = ({ onSubmit, loading }: CodeEditorProps) => {
             padding: { top: 16, bottom: 16 },
             fontFamily:
               "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
-            fontLigatures: true,
+            fontLigatures: false,
             renderLineHighlight: "all",
             cursorBlinking: "smooth",
             smoothScrolling: true,

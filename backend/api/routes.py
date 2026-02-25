@@ -4,7 +4,8 @@ API Routes
 Defines all REST API endpoints for the QLC system.
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 from typing import Dict
 import uuid
 import sys
@@ -31,6 +32,8 @@ from api.models import (
     QuestionEvaluationResponse,
     EvaluationResultResponse,
 )
+from database import get_db
+from database import crud as db_crud
 from question_engine.generator import (
     QuestionGenerator,
     GenerationConfig,
@@ -120,7 +123,7 @@ def health_check():
     status_code=status.HTTP_201_CREATED,
     tags=["Questions"]
 )
-def submit_code(request: CodeSubmissionRequest):
+def submit_code(request: CodeSubmissionRequest, db: Session = Depends(get_db)):
     """
     Submit code and generate questions.
 
@@ -229,6 +232,9 @@ def submit_code(request: CodeSubmissionRequest):
         if result.dynamic_analysis:
             analysis_summary.execution_successful = result.dynamic_analysis.get('execution_successful')
             analysis_summary.max_stack_depth = result.dynamic_analysis.get('max_stack_depth')
+
+        # Persist to database
+        db_crud.save_submission(db, submission_id, request.code, result, api_questions, metadata)
 
         # Store submission
         submissions_store[submission_id] = {

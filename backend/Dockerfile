@@ -18,9 +18,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY run_api.py .
 
-# Create non-root user for security
+# Create non-root user and persistent data directory
 RUN useradd --create-home --shell /bin/bash appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    mkdir -p /data && \
+    chown appuser:appuser /data
 USER appuser
 
 # Expose port

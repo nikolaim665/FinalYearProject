@@ -6,9 +6,9 @@
 
 ## Tech Stack
 
-- **Backend**: Python 3.10+, FastAPI, SQLAlchemy (async), Alembic, OpenAI GPT-5.2
+- **Backend**: Python 3.10+, FastAPI, SQLAlchemy 2.0 (sync), OpenAI o4-mini (generator) / gpt-4.1-mini (test driver) / gpt-5.2 (explainer)
 - **Frontend**: React 19, Vite, Tailwind CSS, Monaco Editor, Lucide icons
-- **Database**: SQLite (aiosqlite) / PostgreSQL
+- **Database**: SQLite via SQLAlchemy (persisted in Docker via named volume `qlc_data` at `/data/qlc.db`)
 - **Testing**: pytest (async), GitHub Actions CI
 
 ## Project Structure
@@ -26,9 +26,9 @@ backend/
     models.py             # Pydantic request/response schemas
     routes.py             # FastAPI REST endpoints
   database/
-    models.py             # SQLAlchemy ORM models
-    crud.py               # Database operations
-    __init__.py           # DB session/engine setup
+    models.py             # SQLAlchemy ORM models (Submission, Question, AnswerChoice)
+    crud.py               # save_submission() — persists full question+choice tree
+    __init__.py           # engine, SessionLocal, get_db(), init_db()
 frontend/
   src/
     components/
@@ -40,17 +40,17 @@ frontend/
       ThemeContext.tsx    # Dark/light mode context
     hooks/               # Custom React hooks
 tests/                    # pytest test suite
-alembic/                  # Database migrations
 ```
 
 ## Architecture: Two-LLM Pipeline
 
 1. **Static Analyzer** - Parses code via AST (functions, variables, loops, classes, complexity)
-2. **Dynamic Analyzer** - Executes code with `sys.settrace()` (runtime values, loop counts, call graph)
-3. **LLM #1 (AI Generator)** - Generates questions at 4 levels (ATOM/BLOCK/RELATIONAL/MACRO) with correct answers
-4. **LLM #2 (Answer Explainer)** - Verifies each answer against code+analysis, explains why correct answer is correct, why wrong answers are wrong, provides code references and learning tips
+2. **Test Driver Generator** - If the code has no module-level calls, a cheap `gpt-4.1-mini` call generates a try/except-wrapped driver snippet (e.g. `_qlc_r1 = factorial(5)`) that is appended before dynamic analysis so `sys.settrace` has real calls to trace. The original source is unchanged for question generation.
+3. **Dynamic Analyzer** - Executes the (possibly augmented) code with `sys.settrace()` (runtime values, loop counts, call graph)
+4. **LLM #1 (AI Generator, `o4-mini`)** - Generates questions at 4 levels (ATOM/BLOCK/RELATIONAL/MACRO) with correct answers. Uses Structured Outputs (strict JSON Schema) to guarantee response shape and eliminate parse failures.
+5. **LLM #2 (Answer Explainer, `gpt-5.2`)** - Verifies each answer against code+analysis, explains why the correct answer is correct, why wrong answers are wrong, provides code references and learning tips. Receives pre-optimized (trimmed) analysis data. Explanation batches run in parallel via `ThreadPoolExecutor`.
 
-The explainer receives full context (source code + static analysis + dynamic analysis) to ground its explanations in actual code behavior.
+Both LLMs use OpenAI Structured Outputs (`response_format: json_schema, strict: true`) — no more silent question drops from JSON parse errors.
 
 ## Key Commands
 
@@ -66,9 +66,14 @@ cd frontend && npm run build  # Production build
 # Tests
 pytest tests/
 
-# Database migrations
-alembic upgrade head
-alembic revision --autogenerate -m "description"
+# Docker (production)
+docker compose up --build
+
+# Database — interactive SQLite shell inside running container
+docker exec -it qlc-backend sqlite3 /data/qlc.db
+
+# Database — copy DB file out for GUI tools (DB Browser, DBeaver, TablePlus)
+docker cp qlc-backend:/data/qlc.db ./qlc.db
 ```
 
 ## API Endpoints
@@ -83,15 +88,18 @@ alembic revision --autogenerate -m "description"
 ## Environment Variables
 
 - `OPENAI_API_KEY` - Required for question generation and answer explanation
-- `DATABASE_URL` - Optional, defaults to `sqlite+aiosqlite:///./qlc_database.db`
+- `DATABASE_URL` - Optional. In Docker defaults to `sqlite:////data/qlc.db`; locally falls back to `sqlite:///<project-root>/qlc.db`
 
 ## Configuration Flags
 
 In `GenerationConfig` (ai_generator.py):
+- `model: str = "o4-mini"` - Model for question generation
+- `driver_model: str = "gpt-4.1-mini"` - Cheap model used for auto test-driver generation
+- `enable_auto_driver: bool = True` - Auto-generate test inputs when code has no module-level calls
 - `enable_explainer: bool = True` - Toggle the second LLM (answer explainer)
-- `explainer_model: str` - Model for the explainer (defaults to same as generator)
+- `explainer_model: str = "gpt-5.2"` - Model for the explainer
 - `explainer_temperature: float = 0.3` - Lower temp for factual explanations
-- `enable_caching: bool = True` - Cache identical code submissions
+- `enable_caching: bool = True` - Cache identical code submissions (key includes levels + types filters)
 - `max_questions: int = 10` - Max questions per submission
 
 ## Question Types
@@ -110,15 +118,22 @@ In `GenerationConfig` (ai_generator.py):
 - **RELATIONAL** - Connections between parts (how functions interact)
 - **MACRO** - Whole program understanding (purpose, overall behavior)
 
-## Database Migrations
+## Database Schema
 
-Latest migration chain:
-1. `ce8f50213406` - Initial schema (submissions, questions, answers)
-2. `35757c730081` - Add alternative_answers column
-3. `a1b2c3d4e5f6` - Add answer_explanation column (rich LLM explanations)
+Three tables, created automatically via `Base.metadata.create_all()` on startup (no migrations needed):
+
+| Table | Key columns |
+|---|---|
+| `submissions` | `id`, `code`, `created_at`, `execution_time_ms`, `total_questions`, `errors` |
+| `questions` | `id`, `submission_id` (FK), `question_text`, `question_type`, `question_level`, `correct_answer`, `difficulty`, `explanation` |
+| `answer_choices` | `id`, `question_id` (FK), `text`, `is_correct`, `explanation` |
+
+Each question has one `answer_choices` row with `is_correct=1` and up to three with `is_correct=0` (distractors).
+See `docs/database-queries.md` for query examples.
 
 ## Code Style
 
 - Backend: Python, no strict formatter enforced but CI checks black/isort/flake8
 - Frontend: TypeScript (TSX), Tailwind utility classes, functional components with hooks
-- Pydantic v2 for API validation, SQLAlchemy 2.0 mapped_column style for ORM
+- Pydantic v2 for API validation, SQLAlchemy 2.0 `DeclarativeBase` style for ORM
+- DB sessions injected via `Depends(get_db)` in route functions; never use `SessionLocal` directly in routes

@@ -14,6 +14,7 @@ Enhanced with:
 - Token usage tracking
 """
 
+import ast
 import os
 import json
 import time
@@ -144,8 +145,10 @@ class GenerationConfig:
     include_difficulties: List[str] = field(default_factory=lambda: ["easy", "medium", "hard"])
 
     # AI settings
-    temperature: float = 0.7
-    model: str = "gpt-5.2"
+    temperature: float = 1.0
+    model: str = "o4-mini"
+    driver_model: str = "gpt-4.1-mini"
+    enable_auto_driver: bool = True
 
     # Enhanced settings
     max_retries: int = 3
@@ -235,7 +238,9 @@ class ResponseCache:
 
     def _make_key(self, source_code: str, config: GenerationConfig) -> str:
         """Create a cache key from source code and config."""
-        key_data = f"{source_code}:{config.max_questions}:{config.temperature}"
+        levels = ",".join(sorted(config.include_levels))
+        types = ",".join(sorted(config.include_types))
+        key_data = f"{source_code}:{config.max_questions}:{config.temperature}:{levels}:{types}"
         return hashlib.md5(key_data.encode()).hexdigest()
 
     def get(self, source_code: str, config: GenerationConfig) -> Optional[Tuple[List[GeneratedQuestion], int]]:
@@ -393,7 +398,103 @@ Examples of good alternative_answers:
    - Question: "What is the data type of the variable 'names'?"
    - correct_answer: "list"
    - alternative_answers: ["array", "list of strings", "collection", "sequence"]
-   - context: {"variable_name": "names", "data_type": "list"}"""
+   - context: {"variable_name": "names", "data_type": "list"}
+
+SCHEMA CONSTRAINTS (always follow):
+- correct_answer must always be a string, even for numeric answers (write "5" not 5)
+- context must always include all five fields (line_number, variable_name, function_name, data_type, loop_type), set unused ones to null"""
+
+
+GENERATOR_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "questions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "template_id": {"type": "string"},
+                    "question_text": {"type": "string"},
+                    "question_type": {
+                        "type": "string",
+                        "enum": ["multiple_choice", "true_false", "numeric"]
+                    },
+                    "question_level": {
+                        "type": "string",
+                        "enum": ["atom", "block", "relational", "macro"]
+                    },
+                    "correct_answer": {"type": "string"},
+                    "alternative_answers": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "answer_choices": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "text": {"type": "string"},
+                                "is_correct": {"type": "boolean"},
+                                "explanation": {
+                                    "anyOf": [{"type": "string"}, {"type": "null"}]
+                                }
+                            },
+                            "required": ["text", "is_correct", "explanation"],
+                            "additionalProperties": False
+                        }
+                    },
+                    "difficulty": {
+                        "type": "string",
+                        "enum": ["easy", "medium", "hard"]
+                    },
+                    "explanation": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}]
+                    },
+                    "context": {
+                        "type": "object",
+                        "properties": {
+                            "line_number": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                            "variable_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                            "function_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                            "data_type": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                            "loop_type": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+                        },
+                        "required": ["line_number", "variable_name", "function_name", "data_type", "loop_type"],
+                        "additionalProperties": False
+                    }
+                },
+                "required": [
+                    "template_id", "question_text", "question_type", "question_level",
+                    "correct_answer", "alternative_answers", "answer_choices",
+                    "difficulty", "explanation", "context"
+                ],
+                "additionalProperties": False
+            }
+        }
+    },
+    "required": ["questions"],
+    "additionalProperties": False
+}
+
+
+TEST_DRIVER_SYSTEM_PROMPT = """You are a Python test input generator. Given a list of function signatures from student Python code, generate a short driver snippet that calls each function with plausible test inputs.
+
+Rules:
+- Wrap EACH function call individually in its own try/except block (so one failure doesn't prevent others)
+- Store return values in variables prefixed with _qlc_ (e.g., _qlc_r1, _qlc_r2, _qlc_r3)
+- Use 2-3 varied inputs per function to cover interesting cases (e.g., 0, edge cases, typical values)
+- Only call the listed functions — do NOT import anything or redefine functions
+- Keep it concise
+
+Return JSON with key "driver_code" containing the Python snippet as a string.
+
+Example output for factorial(n):
+{"driver_code": "try:\\n    _qlc_r1 = factorial(5)\\nexcept Exception:\\n    pass\\ntry:\\n    _qlc_r2 = factorial(0)\\nexcept Exception:\\n    pass\\ntry:\\n    _qlc_r3 = factorial(1)\\nexcept Exception:\\n    pass"}"""
+
+
+def _is_reasoning_model(model: str) -> bool:
+    """Return True for old o-series models that don't support temperature."""
+    return model in {"o1", "o1-mini", "o1-preview"}
 
 
 class AIQuestionGenerator:
@@ -482,11 +583,23 @@ class AIQuestionGenerator:
                 result.errors.append(f"Static analysis failed: {e}")
                 result.warnings.append("Continuing without static analysis")
 
+        # Step 1b: Auto-generate test driver if code has no top-level calls
+        augmented_code = source_code
+        if (
+            self.config.enable_auto_driver
+            and static_analysis
+            and not self._has_module_level_calls(source_code)
+        ):
+            driver = self._generate_test_driver(static_analysis)
+            if driver:
+                augmented_code = source_code + driver
+                result.warnings.append("Auto-generated test driver appended for dynamic analysis")
+
         # Step 2: Dynamic Analysis
         dynamic_analysis = None
         if self.config.enable_dynamic_analysis:
             try:
-                dynamic_analysis = self.dynamic_analyzer.analyze(source_code, test_inputs)
+                dynamic_analysis = self.dynamic_analyzer.analyze(augmented_code, test_inputs)
                 result.dynamic_analysis = dynamic_analysis
                 result.execution_successful = dynamic_analysis.get('execution_successful', False)
 
@@ -551,8 +664,8 @@ class AIQuestionGenerator:
                 explanations = explainer.explain_questions(
                     questions=question_dicts,
                     source_code=source_code,
-                    static_analysis=static_analysis,
-                    dynamic_analysis=dynamic_analysis,
+                    static_analysis=self._optimize_static_analysis(static_analysis or {}),
+                    dynamic_analysis=self._optimize_dynamic_analysis(dynamic_analysis) if dynamic_analysis else None,
                 )
                 result.answer_explanations = explanations
 
@@ -651,18 +764,29 @@ class AIQuestionGenerator:
         # Build the user prompt with optimized/filtered context
         user_prompt = self._build_prompt(source_code, static_analysis, dynamic_analysis)
 
-        # Call OpenAI API with all settings
-        # Note: Newer models like GPT-5.2 use max_completion_tokens instead of max_tokens
-        response = self.client.chat.completions.create(
+        # Build API call params; omit temperature for old reasoning models that don't support it
+        api_params = dict(
             model=self.config.model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=self.config.temperature,
             max_completion_tokens=self.config.max_tokens,
-            response_format={"type": "json_object"}
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "questions_response",
+                    "strict": True,
+                    "schema": GENERATOR_RESPONSE_SCHEMA
+                }
+            }
         )
+        if not _is_reasoning_model(self.config.model):
+            api_params["temperature"] = self.config.temperature
+
+        # Call OpenAI API with all settings
+        # Note: Newer models like GPT-5.2 use max_completion_tokens instead of max_tokens
+        response = self.client.chat.completions.create(**api_params)
 
         # Track token usage
         tokens_used = 0
@@ -698,6 +822,61 @@ class AIQuestionGenerator:
             questions = questions[:self.config.max_questions]
 
         return questions, tokens_used
+
+    def _has_module_level_calls(self, source_code: str) -> bool:
+        """Return True if the code has any function calls at the module (top) level."""
+        try:
+            tree = ast.parse(source_code)
+            for node in tree.body:
+                if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                    return True
+                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+                    return True
+                if isinstance(node, ast.AugAssign) and isinstance(getattr(node, 'value', None), ast.Call):
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _generate_test_driver(self, static_analysis: Dict[str, Any]) -> str:
+        """
+        Generate a Python snippet that calls student functions with plausible test inputs.
+        Returns a code string to append to the source before dynamic analysis.
+        """
+        functions = static_analysis.get("functions", [])
+        if not functions:
+            return ""
+
+        func_descriptions = []
+        for f in functions[:10]:
+            params = ", ".join(f.get("params", []))
+            desc = f"- {f['name']}({params})"
+            if f.get("is_recursive"):
+                desc += " [recursive]"
+            if f.get("is_generator"):
+                desc += " [generator]"
+            func_descriptions.append(desc)
+
+        prompt = "Functions to test:\n" + "\n".join(func_descriptions)
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.config.driver_model,
+                messages=[
+                    {"role": "system", "content": TEST_DRIVER_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_completion_tokens=600,
+                response_format={"type": "json_object"},
+            )
+            data = json.loads(response.choices[0].message.content)
+            driver_code = data.get("driver_code", "").strip()
+            if driver_code:
+                return "\n\n# --- QLC auto-generated test driver ---\n" + driver_code + "\n"
+        except Exception as e:
+            logger.warning(f"Test driver generation failed: {e}")
+        return ""
 
     def _build_prompt(
         self,

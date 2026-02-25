@@ -15,6 +15,7 @@ The explainer has full access to:
 This ensures explanations are grounded in actual code behavior, not guesses.
 """
 
+import concurrent.futures
 import os
 import json
 import time
@@ -144,7 +145,61 @@ Return your response as a JSON object with this structure:
 If the proposed correct answer is wrong, set:
 - "is_answer_verified": false
 - "corrected_answer": "the actual correct answer"
-- Explain in correct_answer_reasoning why the original answer was wrong and what the correct one is"""
+- Explain in correct_answer_reasoning why the original answer was wrong and what the correct one is
+
+SCHEMA CONSTRAINT: verified_correct_answer and corrected_answer must always be strings (write "5" not 5 for numeric answers)."""
+
+
+EXPLAINER_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "explanations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "question_index": {"type": "integer"},
+                    "verified_correct_answer": {"type": "string"},
+                    "is_answer_verified": {"type": "boolean"},
+                    "correct_answer_reasoning": {"type": "string"},
+                    "code_references": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "analysis_references": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "wrong_answer_explanations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "answer_text": {"type": "string"},
+                                "explanation": {"type": "string"},
+                                "common_misconception": {
+                                    "anyOf": [{"type": "string"}, {"type": "null"}]
+                                }
+                            },
+                            "required": ["answer_text", "explanation", "common_misconception"],
+                            "additionalProperties": False
+                        }
+                    },
+                    "learning_tip": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "corrected_answer": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+                },
+                "required": [
+                    "question_index", "verified_correct_answer", "is_answer_verified",
+                    "correct_answer_reasoning", "code_references", "analysis_references",
+                    "wrong_answer_explanations", "learning_tip", "corrected_answer"
+                ],
+                "additionalProperties": False
+            }
+        }
+    },
+    "required": ["explanations"],
+    "additionalProperties": False
+}
 
 
 class AnswerExplainer:
@@ -184,17 +239,33 @@ class AnswerExplainer:
         if not questions:
             return []
 
-        all_explanations = []
+        batches = [
+            (i, questions[i:i + self.config.batch_size])
+            for i in range(0, len(questions), self.config.batch_size)
+        ]
 
-        # Process in batches to stay within token limits
-        for i in range(0, len(questions), self.config.batch_size):
-            batch = questions[i:i + self.config.batch_size]
-            batch_explanations = self._explain_batch_with_retry(
-                batch, source_code, static_analysis, dynamic_analysis, start_index=i
+        if len(batches) == 1:
+            return self._explain_batch_with_retry(
+                batches[0][1], source_code, static_analysis, dynamic_analysis, start_index=0
             )
-            all_explanations.extend(batch_explanations)
 
-        return all_explanations
+        # Multiple batches — run in parallel
+        all_explanations: List[Optional[AnswerExplanation]] = [None] * len(questions)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(batches)) as executor:
+            futures = {
+                executor.submit(
+                    self._explain_batch_with_retry,
+                    batch, source_code, static_analysis, dynamic_analysis, start_index=start_idx
+                ): start_idx
+                for start_idx, batch in batches
+            }
+            for future in concurrent.futures.as_completed(futures):
+                start_idx = futures[future]
+                for j, exp in enumerate(future.result()):
+                    all_explanations[start_idx + j] = exp
+
+        return [e for e in all_explanations if e is not None]
 
     def _explain_batch_with_retry(
         self,
@@ -264,7 +335,14 @@ class AnswerExplainer:
             ],
             temperature=self.config.temperature,
             max_completion_tokens=self.config.max_tokens,
-            response_format={"type": "json_object"},
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "explanations_response",
+                    "strict": True,
+                    "schema": EXPLAINER_RESPONSE_SCHEMA
+                }
+            },
         )
 
         response_text = response.choices[0].message.content

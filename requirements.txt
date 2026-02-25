@@ -1,3 +1,6 @@
+# Database
+sqlalchemy>=2.0.0
+
 # Core dependencies
 openai>=1.0.0  # For GPT-5.2 API access
 python-dotenv>=1.0.0  # Load .env file for local development

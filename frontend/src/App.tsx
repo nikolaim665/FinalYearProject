@@ -243,46 +243,36 @@ function App() {
           </div>
         )}
 
-        {/* Results Summary */}
-        {submission && (
-          <div className="mb-8 fade-in-up">
-            <ResultsSummary
-              metadata={submission.metadata}
-              analysisSummary={submission.analysis_summary}
-              errors={submission.errors}
-              warnings={submission.warnings}
-            />
-          </div>
-        )}
-
         {/* Main Grid */}
-        <div
-          className={`grid gap-6 fade-in-up animation-delay-200 ${
-            submission ? "grid-cols-1 lg:grid-cols-[1fr_1fr_320px]" : "grid-cols-1 lg:grid-cols-2"
-          }`}
-        >
-          {/* Code Editor */}
-          <div className="h-[650px]">
-            <CodeEditor onSubmit={handleCodeSubmit} loading={loading} />
+        <div className="grid gap-6 fade-in-up animation-delay-200 grid-cols-1 lg:grid-cols-[2fr_3fr]">
+          {/* Left column: Code Editor + Results Summary + Quality Evaluation */}
+          <div className="flex flex-col gap-6">
+            <div className="h-[600px]">
+              <CodeEditor onSubmit={handleCodeSubmit} loading={loading} />
+            </div>
+            {submission && (
+              <ResultsSummary
+                metadata={submission.metadata}
+                analysisSummary={submission.analysis_summary}
+                errors={submission.errors}
+                warnings={submission.warnings}
+              />
+            )}
+            {submission && (
+              <EvaluationPanel
+                questions={submission.questions}
+                submissionId={submission.submission_id}
+              />
+            )}
           </div>
 
-          {/* Question Panel */}
-          <div className="h-[650px]">
+          {/* Right column: Question Panel */}
+          <div className="lg:sticky lg:top-4 h-[800px]">
             <QuestionPanel
               questions={submission?.questions}
               submissionId={submission?.submission_id}
             />
           </div>
-
-          {/* Evaluation Sidebar (shown after submission) */}
-          {submission && (
-            <div className="overflow-y-auto max-h-[650px]">
-              <EvaluationPanel
-                questions={submission.questions}
-                submissionId={submission.submission_id}
-              />
-            </div>
-          )}
         </div>
 
         {/* Footer */}

@@ -143,10 +143,14 @@ def read_root():
 @app.on_event("startup")
 async def startup_event():
     """Run on application startup."""
+    from database import init_db, DATABASE_URL
+    init_db()
+
     print("=" * 80)
     print("QLC API - Questions about Learners' Code")
     print("=" * 80)
     print("API is starting up...")
+    print(f"Database : {DATABASE_URL}")
     print("Docs available at: http://localhost:8000/docs")
     print("=" * 80)
 
