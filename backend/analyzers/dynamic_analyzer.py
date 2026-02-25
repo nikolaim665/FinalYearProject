@@ -441,6 +441,10 @@ class DynamicAnalyzer:
                     exec(source_code, exec_globals)
                 result_container['completed'] = True
             except Exception as e:
+                # Stop tracing immediately so that internal generator exhaustion
+                # (StopIteration from traceback.format_exc's walk_tb iterator)
+                # cannot overwrite the real user exception via _handle_exception.
+                sys.settrace(None)
                 tracer.trace.exception = f"{type(e).__name__}: {str(e)}"
                 try:
                     tracer.trace.exception_traceback = traceback.format_exc()
