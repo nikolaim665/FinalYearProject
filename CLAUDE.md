@@ -24,7 +24,7 @@ backend/
     answer_validator.py   # Semantic answer validation (synonyms, partial match)
   api/
     models.py             # Pydantic request/response schemas
-    routes_db.py          # FastAPI REST endpoints
+    routes.py             # FastAPI REST endpoints
   database/
     models.py             # SQLAlchemy ORM models
     crud.py               # Database operations
@@ -32,14 +32,13 @@ backend/
 frontend/
   src/
     components/
-      QuestionPanel.jsx   # Question display, answer input, detailed explanations
-      CodeEditor.jsx      # Monaco-based Python editor
-      ResultsSummary.jsx   # Analysis results display
-    pages/
-      CodingPage.jsx      # Main coding interface
-      ResultsPage.jsx     # Results review
-    services/
-      api.js              # Axios HTTP client
+      QuestionPanel.tsx   # Question display, answer input, detailed explanations
+      CodeEditor.tsx      # Monaco-based Python editor
+      ResultsSummary.tsx  # Analysis results display
+      EvaluationPanel.tsx # LLM judge evaluation display
+    contexts/
+      ThemeContext.tsx    # Dark/light mode context
+    hooks/               # Custom React hooks
 tests/                    # pytest test suite
 alembic/                  # Database migrations
 ```
@@ -95,6 +94,15 @@ In `GenerationConfig` (ai_generator.py):
 - `enable_caching: bool = True` - Cache identical code submissions
 - `max_questions: int = 10` - Max questions per submission
 
+## Question Types
+
+- **multiple_choice** - 4 options, one correct (most common)
+- **true_false** - True or False statement about the code
+- **numeric** - Student provides a number (e.g. loop count, return value)
+
+> `fill_in_blank` and `short_answer` (open-ended) have been removed. The LLM
+> prompt, enums, and frontend all enforce only the three types above.
+
 ## Question Levels (Block Model)
 
 - **ATOM** - Language elements (variable values, types)
@@ -112,6 +120,5 @@ Latest migration chain:
 ## Code Style
 
 - Backend: Python, no strict formatter enforced but CI checks black/isort/flake8
-- Frontend: JSX, Tailwind utility classes, functional components with hooks
-- No TypeScript in frontend (plain JSX)
+- Frontend: TypeScript (TSX), Tailwind utility classes, functional components with hooks
 - Pydantic v2 for API validation, SQLAlchemy 2.0 mapped_column style for ORM

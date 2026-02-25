@@ -1,9 +1,9 @@
 """
-Answer Validator for Open-Ended Questions
+Answer Validator
 
 Provides semantic answer validation that supports multiple correct answers
-and intelligent comparison for open-ended questions (short_answer, fill_in_blank).
-Also supports numeric validation with tolerance, ranges, and alternative values.
+and intelligent comparison. Also supports numeric validation with tolerance,
+ranges, and alternative values.
 """
 
 import re
@@ -175,7 +175,7 @@ class AnswerValidator:
         student_answer: str,
         correct_answer: str,
         alternative_answers: Optional[List[str]] = None,
-        question_type: str = "short_answer",
+        question_type: str = "multiple_choice",
         context: Optional[Dict[str, Any]] = None
     ) -> ValidationResult:
         """
@@ -221,7 +221,7 @@ class AnswerValidator:
                 return alt_result
 
         # If partial matching is allowed and we haven't found a match, try semantic matching
-        if self.allow_partial and question_type in ["short_answer", "fill_in_blank"]:
+        if self.allow_partial:
             semantic_result = self._semantic_match(
                 normalized_student,
                 correct_answer,
@@ -608,7 +608,7 @@ def validate_answer(
     student_answer: Any,
     correct_answer: Any,
     alternative_answers: Optional[List[str]] = None,
-    question_type: str = "short_answer",
+    question_type: str = "multiple_choice",
     case_sensitive: bool = False,
     context: Optional[Dict[str, Any]] = None,
     numeric_config: Optional[NumericConfig] = None

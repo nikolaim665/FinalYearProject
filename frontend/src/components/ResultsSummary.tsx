@@ -2,7 +2,6 @@ import {
   Activity,
   Code2,
   AlertTriangle,
-  Info,
   CheckCircle,
   XCircle,
   Layers,
@@ -11,15 +10,26 @@ import {
   Clock,
   Zap,
   FileCode,
-} from 'lucide-react';
+} from "lucide-react";
+import type { GenerationMetadata, AnalysisSummary } from "@/lib/api-types";
 
-const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
-  if (!metadata && !analysisSummary) {
-    return null;
-  }
+interface ResultsSummaryProps {
+  metadata?: GenerationMetadata;
+  analysisSummary?: AnalysisSummary;
+  errors?: string[];
+  warnings?: string[];
+}
+
+const ResultsSummary = ({
+  metadata,
+  analysisSummary,
+  errors,
+  warnings,
+}: ResultsSummaryProps) => {
+  if (!metadata && !analysisSummary) return null;
 
   return (
-    <div className="card p-6">
+    <div className="qlc-card p-6">
       <div className="flex items-center gap-3 mb-6">
         <div className="p-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white">
           <Activity className="w-5 h-5" />
@@ -36,7 +46,6 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {/* Questions Generated */}
         {metadata && (
           <>
             <div className="stat-card text-indigo-600 dark:text-indigo-400">
@@ -52,14 +61,18 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
                 {metadata.total_returned}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                <span className="text-emerald-600 dark:text-emerald-400">{metadata.total_generated} generated</span>
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  {metadata.total_generated} generated
+                </span>
                 {metadata.total_filtered > 0 && (
-                  <span className="text-amber-600 dark:text-amber-400"> · {metadata.total_filtered} filtered</span>
+                  <span className="text-amber-600 dark:text-amber-400">
+                    {" "}
+                    · {metadata.total_filtered} filtered
+                  </span>
                 )}
               </p>
             </div>
 
-            {/* Templates Applied */}
             <div className="stat-card text-purple-600 dark:text-purple-400">
               <div className="flex items-center gap-2 mb-3">
                 <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
@@ -77,14 +90,15 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
               </p>
             </div>
 
-            {/* Execution Status */}
             <div className="stat-card">
               <div className="flex items-center gap-2 mb-3">
-                <div className={`p-2 rounded-lg ${
-                  metadata.execution_successful
-                    ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400'
-                }`}>
+                <div
+                  className={`p-2 rounded-lg ${
+                    metadata.execution_successful
+                      ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400"
+                      : "bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400"
+                  }`}
+                >
                   {metadata.execution_successful ? (
                     <CheckCircle className="w-5 h-5" />
                   ) : (
@@ -95,12 +109,14 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
                   Execution
                 </span>
               </div>
-              <p className={`text-3xl font-bold mb-1 ${
-                metadata.execution_successful
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-rose-600 dark:text-rose-400'
-              }`}>
-                {metadata.execution_successful ? 'Success' : 'Failed'}
+              <p
+                className={`text-3xl font-bold mb-1 ${
+                  metadata.execution_successful
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-rose-600 dark:text-rose-400"
+                }`}
+              >
+                {metadata.execution_successful ? "Success" : "Failed"}
               </p>
               {metadata.execution_time_ms !== undefined && (
                 <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
@@ -112,7 +128,6 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
           </>
         )}
 
-        {/* Code Stats */}
         {analysisSummary && (
           <div className="stat-card text-slate-600 dark:text-slate-400">
             <div className="flex items-center gap-2 mb-3">
@@ -124,7 +139,7 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              {analysisSummary.total_functions > 0 && (
+              {(analysisSummary.total_functions ?? 0) > 0 && (
                 <div className="flex items-center gap-1.5">
                   <Code2 className="w-3.5 h-3.5 text-indigo-500" />
                   <span className="text-slate-600 dark:text-slate-300">
@@ -132,15 +147,17 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
                   </span>
                 </div>
               )}
-              {analysisSummary.total_variables > 0 && (
+              {(analysisSummary.total_variables ?? 0) > 0 && (
                 <div className="flex items-center gap-1.5">
-                  <span className="w-3.5 h-3.5 text-purple-500 font-mono text-xs font-bold">x</span>
+                  <span className="w-3.5 h-3.5 text-purple-500 font-mono text-xs font-bold">
+                    x
+                  </span>
                   <span className="text-slate-600 dark:text-slate-300">
                     {analysisSummary.total_variables} vars
                   </span>
                 </div>
               )}
-              {analysisSummary.total_loops > 0 && (
+              {(analysisSummary.total_loops ?? 0) > 0 && (
                 <div className="flex items-center gap-1.5">
                   <Repeat className="w-3.5 h-3.5 text-emerald-500" />
                   <span className="text-slate-600 dark:text-slate-300">
@@ -148,7 +165,7 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
                   </span>
                 </div>
               )}
-              {analysisSummary.total_conditionals > 0 && (
+              {(analysisSummary.total_conditionals ?? 0) > 0 && (
                 <div className="flex items-center gap-1.5">
                   <GitBranch className="w-3.5 h-3.5 text-amber-500" />
                   <span className="text-slate-600 dark:text-slate-300">
@@ -169,7 +186,7 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
         )}
       </div>
 
-      {/* Errors and Warnings */}
+      {/* Errors */}
       {errors && errors.length > 0 && (
         <div className="mb-4 p-4 rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800">
           <div className="flex items-center gap-2 mb-3">
@@ -181,9 +198,9 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
             </span>
           </div>
           <ul className="space-y-2">
-            {errors.map((error, index) => (
+            {errors.map((error, i) => (
               <li
-                key={index}
+                key={i}
                 className="flex items-start gap-2 text-sm text-rose-800 dark:text-rose-200"
               >
                 <span className="text-rose-400 mt-1">•</span>
@@ -194,6 +211,7 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
         </div>
       )}
 
+      {/* Warnings */}
       {warnings && warnings.length > 0 && (
         <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
           <div className="flex items-center gap-2 mb-3">
@@ -205,9 +223,9 @@ const ResultsSummary = ({ metadata, analysisSummary, errors, warnings }) => {
             </span>
           </div>
           <ul className="space-y-2">
-            {warnings.map((warning, index) => (
+            {warnings.map((warning, i) => (
               <li
-                key={index}
+                key={i}
                 className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200"
               >
                 <span className="text-amber-400 mt-1">•</span>

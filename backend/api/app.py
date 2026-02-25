@@ -5,7 +5,8 @@ Main FastAPI application for the QLC (Questions about Learners' Code) system.
 """
 
 from dotenv import load_dotenv
-load_dotenv(override=True)  # .env takes precedence over system environment variables
+from pathlib import Path as _Path
+load_dotenv(dotenv_path=_Path(__file__).parent.parent.parent / ".env", override=True)  # .env takes precedence over system environment variables
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware

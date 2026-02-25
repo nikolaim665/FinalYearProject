@@ -72,9 +72,7 @@ def map_type_enum(qtype: QuestionTypeEnum) -> QuestionType:
     """Map API type enum to internal enum."""
     mapping = {
         QuestionTypeEnum.MULTIPLE_CHOICE: QuestionType.MULTIPLE_CHOICE,
-        QuestionTypeEnum.FILL_IN_BLANK: QuestionType.FILL_IN_BLANK,
         QuestionTypeEnum.TRUE_FALSE: QuestionType.TRUE_FALSE,
-        QuestionTypeEnum.SHORT_ANSWER: QuestionType.SHORT_ANSWER,
         QuestionTypeEnum.NUMERIC: QuestionType.NUMERIC,
         QuestionTypeEnum.CODE_SELECTION: QuestionType.CODE_SELECTION,
     }
@@ -326,16 +324,6 @@ def submit_answer(request: AnswerSubmissionRequest):
                 explanation = f"Incorrect. The correct answer is: {correct_answer}. {question.explanation or ''}"
         except (ValueError, TypeError):
             explanation = "Invalid numeric answer format"
-
-    elif api_question.question_type == QuestionTypeEnum.FILL_IN_BLANK:
-        # For fill-in-blank, check string equality (case-insensitive)
-        user_answer = str(request.answer).strip().lower()
-        correct_answer = str(question.correct_answer).strip().lower()
-        is_correct = user_answer == correct_answer
-        if is_correct:
-            explanation = f"Correct! {question.explanation or ''}"
-        else:
-            explanation = f"Incorrect. The correct answer is: {question.correct_answer}. {question.explanation or ''}"
 
     else:
         # For other types, basic string comparison

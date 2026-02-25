@@ -51,9 +51,7 @@ class QuestionLevel(Enum):
 class QuestionType(Enum):
     """Type of question and expected answer format."""
     MULTIPLE_CHOICE = "multiple_choice"
-    FILL_IN_BLANK = "fill_in_blank"
     TRUE_FALSE = "true_false"
-    SHORT_ANSWER = "short_answer"
     NUMERIC = "numeric"
     CODE_SELECTION = "code_selection"
 
@@ -122,7 +120,7 @@ class GenerationConfig:
 
     # Question preferences
     include_levels: List[str] = field(default_factory=lambda: ["atom", "block", "relational", "macro"])
-    include_types: List[str] = field(default_factory=lambda: ["multiple_choice", "fill_in_blank", "numeric", "short_answer"])
+    include_types: List[str] = field(default_factory=lambda: ["multiple_choice", "numeric", "true_false"])
     include_difficulties: List[str] = field(default_factory=lambda: ["easy", "medium", "hard"])
 
     # AI settings
@@ -275,9 +273,7 @@ Question Levels (based on Block Model):
 
 Question Types:
 - multiple_choice: Provide 4 options, one correct
-- fill_in_blank: Student fills in a value
 - numeric: Student provides a number
-- short_answer: Brief text answer (open-ended, may have multiple valid answers)
 - true_false: True or False question
 
 IMPORTANT:
@@ -297,15 +293,6 @@ COMPLEX CODE FEATURES - Generate questions about:
 - Context Managers: Ask about what 'with' statements manage
 - Recursion: Ask about base cases, recursive calls, stack depth
 - Closures: Ask about nested functions and variable capture
-
-CRITICAL - MULTIPLE VALID ANSWERS:
-For open-ended questions (short_answer, fill_in_blank), you MUST provide alternative_answers when multiple answers could be semantically correct:
-- Include synonyms (e.g., "loop", "iteration", "repetition")
-- Include equivalent phrasings (e.g., "calculates sum", "computes the total", "adds up values")
-- Include acceptable variations (e.g., "recursive function", "recursion", "calls itself")
-- Include different levels of detail that are all correct
-- Think about how a student might reasonably phrase their answer
-- Consider common student vocabulary and informal expressions
 
 NUMERIC QUESTIONS - IMPORTANT:
 For numeric questions, consider:
@@ -329,10 +316,10 @@ Return your response as a JSON array of question objects with this structure:
     {
       "template_id": "ai_generated_<type>",
       "question_text": "The question text",
-      "question_type": "multiple_choice|fill_in_blank|numeric|short_answer|true_false",
+      "question_type": "multiple_choice|numeric|true_false",
       "question_level": "atom|block|relational|macro",
       "correct_answer": "The primary correct answer (string or number)",
-      "alternative_answers": [  // REQUIRED for short_answer, fill_in_blank, and when applicable to numeric
+      "alternative_answers": [  // For numeric when equivalent representations exist
         "Alternative phrasing 1",
         "Synonym or equivalent answer",
         "Another valid way to express the answer"
@@ -865,9 +852,7 @@ class AIQuestionGenerator:
         # Map string values to enums
         question_type_map = {
             "multiple_choice": QuestionType.MULTIPLE_CHOICE,
-            "fill_in_blank": QuestionType.FILL_IN_BLANK,
             "true_false": QuestionType.TRUE_FALSE,
-            "short_answer": QuestionType.SHORT_ANSWER,
             "numeric": QuestionType.NUMERIC,
             "code_selection": QuestionType.CODE_SELECTION,
         }

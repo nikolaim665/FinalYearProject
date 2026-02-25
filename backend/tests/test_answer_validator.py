@@ -1,8 +1,8 @@
 """
 Tests for the Answer Validator
 
-Tests the semantic answer validation for open-ended questions with multiple
-valid answers.
+Tests the semantic answer validation with multiple valid answers,
+synonym matching, and numeric validation.
 """
 
 import pytest
@@ -93,7 +93,7 @@ class TestAnswerValidator:
             student_answer="iteration",
             correct_answer="loop",
             alternative_answers=[],
-            question_type="short_answer"
+            question_type="multiple_choice"
         )
 
         assert result.is_correct is True
@@ -105,7 +105,7 @@ class TestAnswerValidator:
             student_answer="method",
             correct_answer="function",
             alternative_answers=[],
-            question_type="short_answer"
+            question_type="multiple_choice"
         )
 
         assert result.is_correct is True
@@ -128,7 +128,7 @@ class TestAnswerValidator:
             student_answer="calculates total sum",
             correct_answer="computes the sum",
             alternative_answers=["adds up values", "total calculation"],
-            question_type="short_answer"
+            question_type="multiple_choice"
         )
 
         # Should match due to synonym overlap (sum, total, calculates/computes)
@@ -145,13 +145,13 @@ class TestAnswerValidator:
         assert result.is_correct is True
         assert result.matched_answer == "calls itself"
 
-    def test_fill_in_blank_type(self):
-        """Test fill-in-blank question type."""
+    def test_exact_match_numeric_type(self):
+        """Test exact match for numeric question type."""
         result = self.validator.validate(
             student_answer="120",
             correct_answer="120",
             alternative_answers=[],
-            question_type="fill_in_blank"
+            question_type="numeric"
         )
 
         assert result.is_correct is True
@@ -182,7 +182,7 @@ class TestAnswerValidator:
             student_answer="iteration cycle",
             correct_answer="loop iteration",
             alternative_answers=[],
-            question_type="short_answer"
+            question_type="multiple_choice"
         )
 
         # The match should succeed since iteration/loop are synonyms
@@ -209,7 +209,7 @@ class TestValidateAnswerFunction:
             student_answer="loop",
             correct_answer="iteration",
             alternative_answers=[],
-            question_type="short_answer"
+            question_type="multiple_choice"
         )
 
         assert result.is_correct is True  # Should match via synonym
@@ -273,7 +273,7 @@ class TestRealWorldScenarios:
             "loops through list elements",
             correct,
             alternatives,
-            question_type="short_answer"
+            question_type="multiple_choice"
         )
         assert result.is_correct is True
 

@@ -1,0 +1,16 @@
+Demo Slide Bullets — Questions about Learners' Code (QLC)
+
+• QLC is an AI-powered tool that automatically generates comprehension questions about student-written Python code.
+• Inspired by Lehtinen et al. (2021): "Let's Ask Students About Their Programs, Automatically."
+• Students paste their own code into the editor — the system asks questions about what they just wrote.
+• A static analyser parses the code via AST, extracting functions, variables, loops, classes, and complexity metrics.
+• A dynamic analyser executes the code using sys.settrace(), capturing runtime values, loop counts, and call graphs.
+• Two LLMs work in a pipeline: the first generates questions, the second verifies and explains every answer.
+• Questions are generated at four levels: ATOM (variables), BLOCK (loops/functions), RELATIONAL (interactions), and MACRO (overall purpose).
+• Wrong answers get rich, grounded feedback — referencing the actual lines of code where the student went wrong.
+• The multiple-choice format makes self-testing fast, while detailed explanations make it genuinely educational.
+• Identical code submissions are cached, keeping response times low and API costs down.
+• The full stack is a React + Monaco Editor frontend talking to a FastAPI backend backed by SQLite.
+• Every submission, question, and answer is persisted — enabling session review and future analytics.
+• The system is containerised with Docker, making it trivially deployable on any machine.
+• Designed as a formative tool: not to grade students, but to prompt reflection on their own code.

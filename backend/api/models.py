@@ -21,9 +21,7 @@ class QuestionLevelEnum(str, Enum):
 class QuestionTypeEnum(str, Enum):
     """Type of question."""
     MULTIPLE_CHOICE = "multiple_choice"
-    FILL_IN_BLANK = "fill_in_blank"
     TRUE_FALSE = "true_false"
-    SHORT_ANSWER = "short_answer"
     NUMERIC = "numeric"
     CODE_SELECTION = "code_selection"
 
@@ -155,7 +153,7 @@ class Question(BaseModel):
     correct_answer: Any
     alternative_answers: List[str] = Field(
         default=[],
-        description="Alternative acceptable answers for open-ended questions"
+        description="Alternative acceptable answers for numeric questions"
     )
     answer_choices: List[AnswerChoice] = []
     context: Dict[str, Any] = {}
@@ -172,11 +170,11 @@ class Question(BaseModel):
                 "id": "q_123",
                 "template_id": "recursive_function_detection",
                 "question_text": "What type of function is factorial?",
-                "question_type": "short_answer",
+                "question_type": "multiple_choice",
                 "question_level": "block",
                 "answer_type": "static",
                 "correct_answer": "recursive",
-                "alternative_answers": ["recursion", "recursive function", "calls itself"],
+                "alternative_answers": [],
                 "answer_choices": [],
                 "difficulty": "medium"
             }
