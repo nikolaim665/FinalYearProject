@@ -64,6 +64,14 @@ class AnswerType(Enum):
     AI = "ai"
 
 
+class GenerationStrategy(Enum):
+    """Strategy for selecting which questions to return."""
+    ALL = "all"
+    DIVERSE = "diverse"
+    FOCUSED = "focused"
+    ADAPTIVE = "adaptive"
+
+
 @dataclass
 class QuestionAnswer:
     """Represents a possible answer to a question."""
@@ -117,6 +125,18 @@ class GenerationConfig:
     max_questions: int = 10
     min_questions: int = 3
     dynamic_timeout: int = 5
+
+    # Analysis control
+    enable_static_analysis: bool = True
+    enable_dynamic_analysis: bool = True
+
+    # Selection strategy (informational; AI handles diversity internally)
+    strategy: Optional[Any] = field(default_factory=lambda: GenerationStrategy.DIVERSE)
+
+    # Post-generation filters
+    allowed_levels: Optional[Any] = None   # Set[QuestionLevel] – keep only these levels
+    allowed_difficulties: Optional[Any] = None  # Set[str] – keep only these difficulties
+    remove_similar_questions: bool = False  # Deduplicate similar questions
 
     # Question preferences
     include_levels: List[str] = field(default_factory=lambda: ["atom", "block", "relational", "macro"])
@@ -429,50 +449,57 @@ class AIQuestionGenerator:
         result = GenerationResult(questions=[])
         self._retries_needed = 0
 
-        # Check cache first
+        # Check cache first (cache stores unfiltered results)
         if self.config.enable_caching:
             cached = _response_cache.get(source_code, self.config)
             if cached:
                 questions, tokens = cached
-                result.questions = questions
                 result.total_generated = len(questions)
                 result.from_cache = True
                 result.tokens_used = tokens
                 result.applicable_templates = 1
+                # Apply post-generation filters even for cached results
+                if self.config.allowed_levels:
+                    questions = [q for q in questions if q.question_level in self.config.allowed_levels]
+                if self.config.allowed_difficulties:
+                    questions = [q for q in questions if q.difficulty in self.config.allowed_difficulties]
+                result.questions = questions
                 result.execution_time_ms = (time.time() - start_time) * 1000
                 logger.info(f"Returning {len(questions)} questions from cache")
                 return result
 
         # Step 1: Static Analysis
         static_analysis = None
-        try:
-            static_analysis = self.static_analyzer.analyze(source_code)
-            result.static_analysis = static_analysis
-        except SyntaxError as e:
-            result.errors.append(f"Syntax error in code: {e}")
-            result.execution_successful = False
-            return result
-        except Exception as e:
-            result.errors.append(f"Static analysis failed: {e}")
-            result.warnings.append("Continuing without static analysis")
+        if self.config.enable_static_analysis:
+            try:
+                static_analysis = self.static_analyzer.analyze(source_code)
+                result.static_analysis = static_analysis
+            except SyntaxError as e:
+                result.errors.append(f"Syntax error in code: {e}")
+                result.execution_successful = False
+                return result
+            except Exception as e:
+                result.errors.append(f"Static analysis failed: {e}")
+                result.warnings.append("Continuing without static analysis")
 
         # Step 2: Dynamic Analysis
         dynamic_analysis = None
-        try:
-            dynamic_analysis = self.dynamic_analyzer.analyze(source_code, test_inputs)
-            result.dynamic_analysis = dynamic_analysis
-            result.execution_successful = dynamic_analysis.get('execution_successful', False)
+        if self.config.enable_dynamic_analysis:
+            try:
+                dynamic_analysis = self.dynamic_analyzer.analyze(source_code, test_inputs)
+                result.dynamic_analysis = dynamic_analysis
+                result.execution_successful = dynamic_analysis.get('execution_successful', False)
 
-            if dynamic_analysis.get('timed_out'):
-                result.warnings.append(f"Code execution timed out after {self.config.dynamic_timeout} seconds")
-                result.warnings.append("Questions will be based on partial execution data")
-            elif not result.execution_successful:
-                exception = dynamic_analysis.get('exception', 'Unknown error')
-                result.warnings.append(f"Code execution failed: {exception}")
-                result.warnings.append("Questions will be limited to static analysis only")
-        except Exception as e:
-            result.errors.append(f"Dynamic analysis failed: {e}")
-            result.warnings.append("Continuing without dynamic analysis")
+                if dynamic_analysis.get('timed_out'):
+                    result.warnings.append(f"Code execution timed out after {self.config.dynamic_timeout} seconds")
+                    result.warnings.append("Questions will be based on partial execution data")
+                elif not result.execution_successful:
+                    exception = dynamic_analysis.get('exception', 'Unknown error')
+                    result.warnings.append(f"Code execution failed: {exception}")
+                    result.warnings.append("Questions will be limited to static analysis only")
+            except Exception as e:
+                result.errors.append(f"Dynamic analysis failed: {e}")
+                result.warnings.append("Continuing without dynamic analysis")
 
         # If both analyses failed, return early
         if not static_analysis and not dynamic_analysis:
@@ -486,15 +513,22 @@ class AIQuestionGenerator:
                 static_analysis or {},
                 dynamic_analysis
             )
-            result.questions = questions
             result.total_generated = len(questions)
             result.tokens_used = tokens_used
             result.retries_needed = self._retries_needed
             result.applicable_templates = 1  # AI acts as one "template"
 
-            # Cache the result
+            # Cache unfiltered results so different filter configs share the same cache entry
             if self.config.enable_caching and questions:
                 _response_cache.set(source_code, self.config, questions, tokens_used)
+
+            # Apply post-generation filters
+            if self.config.allowed_levels:
+                questions = [q for q in questions if q.question_level in self.config.allowed_levels]
+            if self.config.allowed_difficulties:
+                questions = [q for q in questions if q.difficulty in self.config.allowed_difficulties]
+
+            result.questions = questions
 
         except Exception as e:
             result.errors.append(f"AI question generation failed: {e}")

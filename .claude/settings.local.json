@@ -38,7 +38,9 @@
       "Bash(docker compose:*)",
       "Bash(docker-compose:*)",
       "Bash(.venv/bin/pip install:*)",
-      "Bash(.venv/bin/python:*)"
+      "Bash(.venv/bin/python:*)",
+      "Bash(pytest:*)",
+      "Bash(.venv/bin/pytest:*)"
     ],
     "deny": [],
     "ask": []

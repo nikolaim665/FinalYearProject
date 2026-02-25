@@ -148,15 +148,18 @@ def submit_code(request: CodeSubmissionRequest):
             max_questions=request.max_questions
         )
 
-        # Apply filters if provided (use include_* attributes with string values)
+        # Apply filters if provided.
+        # include_* hints the AI prompt; allowed_* hard-filters after generation.
         if request.allowed_levels:
             config.include_levels = [l.value for l in request.allowed_levels]
+            config.allowed_levels = {QuestionLevel(l.value) for l in request.allowed_levels}
 
         if request.allowed_types:
             config.include_types = [t.value for t in request.allowed_types]
 
         if request.allowed_difficulties:
             config.include_difficulties = list(request.allowed_difficulties)
+            config.allowed_difficulties = set(request.allowed_difficulties)
 
         # Generate questions
         generator = QuestionGenerator(config)

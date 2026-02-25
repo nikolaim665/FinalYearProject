@@ -14,6 +14,7 @@ from question_engine.ai_generator import (
     AIQuestionGenerator as QuestionGenerator,
     GenerationConfig,
     GenerationResult,
+    GenerationStrategy,
     QuestionLevel,
     QuestionType,
     AnswerType,
@@ -23,18 +24,3 @@ from question_engine.ai_generator import (
     generate_questions,
     generate_questions_simple,
 )
-
-# Legacy enum for backward compatibility
-from enum import Enum
-
-
-class GenerationStrategy(Enum):
-    """
-    Legacy strategy enum.
-    Note: With AI generation, the strategy is handled by the prompt.
-    These are kept for API compatibility.
-    """
-    ALL = "all"
-    DIVERSE = "diverse"
-    FOCUSED = "focused"
-    ADAPTIVE = "adaptive"
