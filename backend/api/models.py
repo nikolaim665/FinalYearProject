@@ -70,6 +70,10 @@ class CodeSubmissionRequest(BaseModel):
         default=None,
         description="Filter questions by difficulty (easy, medium, hard)"
     )
+    lecture_slides: Optional[str] = Field(
+        default=None,
+        description="Raw text of lecture slides for RAG-enriched question generation"
+    )
 
     @field_validator('code')
     @classmethod
@@ -195,11 +199,13 @@ class AnalysisSummary(BaseModel):
 class GenerationMetadata(BaseModel):
     """Metadata about question generation."""
     total_generated: int
-    total_filtered: int
+    total_filtered: int = 0
     total_returned: int
-    applicable_templates: int
+    applicable_templates: int = 1
     execution_successful: bool
     execution_time_ms: float
+    rag_used: bool = False
+    agents_used: List[str] = Field(default_factory=list)
 
 
 class CodeSubmissionResponse(BaseModel):

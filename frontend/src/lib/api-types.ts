@@ -62,6 +62,8 @@ export interface GenerationMetadata {
   applicable_templates: number;
   execution_successful: boolean;
   execution_time_ms: number;
+  rag_used?: boolean;
+  agents_used?: string[];
 }
 
 export interface CodeSubmissionResponse {
@@ -114,4 +116,5 @@ export interface CodeSubmissionRequest {
   max_questions?: number;
   strategy?: string;
   test_inputs?: unknown[];
+  lecture_slides?: string;
 }

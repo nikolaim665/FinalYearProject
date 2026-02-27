@@ -1,33 +1,24 @@
 """
 Question Engine Package
 
-AI-powered question generation system using OpenAI GPT-5.2.
+LangGraph-powered multi-agent question generation system.
 Analyzes student code (static + dynamic) and generates
-pedagogically valuable comprehension questions.
+pedagogically valuable comprehension questions via a pipeline of
+specialised agents.
 """
 
-from question_engine.ai_generator import (
-    AIQuestionGenerator,
-    GenerationConfig,
-    GenerationResult,
-    QuestionLevel,
-    QuestionType,
-    AnswerType,
-    QuestionAnswer,
-    GeneratedQuestion,
-    generate_questions,
-    generate_questions_simple,
-)
+# Primary entry point: run the full LangGraph pipeline
+from question_engine.graph import run_pipeline, get_qlc_graph, build_qlc_graph
+
+# State type
+from question_engine.state import QLCState, make_initial_state
 
 __all__ = [
-    "AIQuestionGenerator",
-    "GenerationConfig",
-    "GenerationResult",
-    "QuestionLevel",
-    "QuestionType",
-    "AnswerType",
-    "QuestionAnswer",
-    "GeneratedQuestion",
-    "generate_questions",
-    "generate_questions_simple",
+    # Pipeline
+    "run_pipeline",
+    "get_qlc_graph",
+    "build_qlc_graph",
+    # State
+    "QLCState",
+    "make_initial_state",
 ]

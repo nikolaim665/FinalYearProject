@@ -1,26 +1,68 @@
 """
-Question Generator (Compatibility Layer)
+Question Generator (Compatibility Shim)
 
-This module provides backward compatibility by re-exporting
-from the AI generator.
-
-The actual question generation is now handled by ai_generator.py
-using OpenAI GPT-5.2.
+The question generation is now handled by the LangGraph multi-agent pipeline.
+This module provides a thin compatibility shim for any code that still imports
+from question_engine.generator.
 """
 
-# Re-export everything from AI generator for backward compatibility
-from question_engine.ai_generator import (
-    # Classes
-    AIQuestionGenerator as QuestionGenerator,
-    GenerationConfig,
-    GenerationResult,
-    GenerationStrategy,
-    QuestionLevel,
-    QuestionType,
-    AnswerType,
-    QuestionAnswer,
-    GeneratedQuestion,
-    # Functions
-    generate_questions,
-    generate_questions_simple,
-)
+from enum import Enum
+from dataclasses import dataclass, field
+from typing import Optional, List, Set, Any
+
+
+class GenerationStrategy(str, Enum):
+    ALL = "all"
+    DIVERSE = "diverse"
+    FOCUSED = "focused"
+    ADAPTIVE = "adaptive"
+
+
+class QuestionLevel(str, Enum):
+    ATOM = "atom"
+    BLOCK = "block"
+    RELATIONAL = "relational"
+    MACRO = "macro"
+
+
+class QuestionType(str, Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE = "true_false"
+    NUMERIC = "numeric"
+
+
+class AnswerType(str, Enum):
+    STATIC = "static"
+    DYNAMIC = "dynamic"
+    CHOICE = "choice"
+
+
+@dataclass
+class GenerationConfig:
+    max_questions: int = 10
+    enable_auto_driver: bool = True
+    enable_caching: bool = True
+    include_levels: List[str] = field(default_factory=list)
+    include_types: List[str] = field(default_factory=list)
+    include_difficulties: List[str] = field(default_factory=list)
+    allowed_levels: Set[QuestionLevel] = field(default_factory=set)
+    allowed_difficulties: Set[str] = field(default_factory=set)
+
+
+class QuestionGenerator:
+    """Compat shim — delegates to run_pipeline."""
+
+    def __init__(self, config: Optional[GenerationConfig] = None):
+        self.config = config or GenerationConfig()
+
+    def generate(self, source_code: str, test_inputs: Optional[Any] = None):
+        from question_engine.graph import run_pipeline
+        cfg = {
+            "max_questions": self.config.max_questions,
+            "enable_auto_driver": self.config.enable_auto_driver,
+            "enable_caching": self.config.enable_caching,
+            "include_levels": self.config.include_levels,
+            "include_types": self.config.include_types,
+            "include_difficulties": self.config.include_difficulties,
+        }
+        return run_pipeline(source_code=source_code, max_questions=self.config.max_questions, config=cfg)

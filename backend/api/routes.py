@@ -2,6 +2,7 @@
 API Routes
 
 Defines all REST API endpoints for the QLC system.
+Now powered by the LangGraph multi-agent pipeline.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from typing import Dict
 import uuid
 import sys
+import time
 from pathlib import Path
 
 # Add backend to path for imports
@@ -34,63 +36,147 @@ from api.models import (
 )
 from database import get_db
 from database import crud as db_crud
-from question_engine.generator import (
-    QuestionGenerator,
-    GenerationConfig,
-    GenerationStrategy
-)
-from question_engine.templates import QuestionLevel, QuestionType
 
 # Create router
 router = APIRouter()
 
-# In-memory storage (replace with database in production)
+# In-memory storage for quick answer checking and submission retrieval
 submissions_store: Dict[str, Dict] = {}
 questions_store: Dict[str, Dict] = {}
 
 
-def map_strategy_enum(strategy: StrategyEnum) -> GenerationStrategy:
-    """Map API strategy enum to internal enum."""
-    mapping = {
-        StrategyEnum.ALL: GenerationStrategy.ALL,
-        StrategyEnum.DIVERSE: GenerationStrategy.DIVERSE,
-        StrategyEnum.FOCUSED: GenerationStrategy.FOCUSED,
-        StrategyEnum.ADAPTIVE: GenerationStrategy.ADAPTIVE,
+def _build_config(request: CodeSubmissionRequest) -> dict:
+    """Build the GenerationConfig dict from a CodeSubmissionRequest."""
+    cfg: dict = {
+        "max_questions": request.max_questions,
+        "enable_caching": True,
+        "enable_auto_driver": True,
+        # Model assignments (can be overridden via env/config in the future)
+        "question_model": "gpt-4o",
+        "answer_model": "gpt-4o",
+        "explanation_model": "gpt-4o-mini",
+        "judge_model": "gpt-4o",
+        "driver_model": "gpt-4o-mini",
     }
-    return mapping[strategy]
+    if request.allowed_levels:
+        cfg["include_levels"] = [l.value for l in request.allowed_levels]
+    if request.allowed_types:
+        cfg["include_types"] = [t.value for t in request.allowed_types]
+    if request.allowed_difficulties:
+        cfg["include_difficulties"] = list(request.allowed_difficulties)
+    return cfg
 
 
-def map_level_enum(level: QuestionLevelEnum) -> QuestionLevel:
-    """Map API level enum to internal enum."""
-    mapping = {
-        QuestionLevelEnum.ATOM: QuestionLevel.ATOM,
-        QuestionLevelEnum.BLOCK: QuestionLevel.BLOCK,
-        QuestionLevelEnum.RELATIONAL: QuestionLevel.RELATIONAL,
-        QuestionLevelEnum.MACRO: QuestionLevel.MACRO,
-    }
-    return mapping[level]
+def _state_to_response(
+    submission_id: str,
+    state: dict,
+    request: CodeSubmissionRequest,
+) -> CodeSubmissionResponse:
+    """Convert a final QLCState dict into a CodeSubmissionResponse."""
+    questions_complete: list = state.get("questions_complete", [])
+    static_analysis: dict = state.get("static_analysis") or {}
+    dynamic_analysis: dict = state.get("dynamic_analysis") or {}
+    errors: list = state.get("analysis_errors", [])
+    warnings: list = state.get("analysis_warnings", [])
+    from_cache: bool = state.get("from_cache", False)
+    rag_used: bool = state.get("rag_context") is not None
 
+    api_questions = []
+    for i, q in enumerate(questions_complete):
+        question_id = q.get("id") or f"q_{uuid.uuid4().hex[:12]}"
 
-def map_type_enum(qtype: QuestionTypeEnum) -> QuestionType:
-    """Map API type enum to internal enum."""
-    mapping = {
-        QuestionTypeEnum.MULTIPLE_CHOICE: QuestionType.MULTIPLE_CHOICE,
-        QuestionTypeEnum.TRUE_FALSE: QuestionType.TRUE_FALSE,
-        QuestionTypeEnum.NUMERIC: QuestionType.NUMERIC,
-        QuestionTypeEnum.CODE_SELECTION: QuestionType.CODE_SELECTION,
-    }
-    return mapping[qtype]
+        # Build answer choices
+        answer_choices = [
+            AnswerChoice(
+                text=c.get("text", ""),
+                is_correct=c.get("is_correct", False),
+                explanation=c.get("explanation"),
+            )
+            for c in q.get("answer_choices", [])
+        ]
+
+        # Determine answer_type from question_type
+        q_type_str = q.get("question_type", "multiple_choice")
+        answer_type = "choice"
+
+        try:
+            q_type_enum = QuestionTypeEnum(q_type_str)
+        except ValueError:
+            q_type_enum = QuestionTypeEnum.MULTIPLE_CHOICE
+
+        try:
+            q_level_enum = QuestionLevelEnum(q.get("question_level", "block"))
+        except ValueError:
+            q_level_enum = QuestionLevelEnum.BLOCK
+
+        api_question = Question(
+            id=question_id,
+            template_id=q.get("template_id", f"ai_generated_{q.get('question_level', 'block')}"),
+            question_text=q.get("question_text", ""),
+            question_type=q_type_enum,
+            question_level=q_level_enum,
+            answer_type=answer_type,
+            correct_answer=q.get("correct_answer", ""),
+            answer_choices=answer_choices,
+            context=q.get("context") or {},
+            explanation=q.get("explanation"),
+            difficulty=q.get("difficulty", "medium"),
+        )
+
+        api_questions.append(api_question)
+
+        # Store for answer submission
+        questions_store[question_id] = {
+            "submission_id": submission_id,
+            "correct_answer": q.get("correct_answer", ""),
+            "question_type": q_type_enum,
+            "explanation": q.get("explanation", ""),
+            "api_question": api_question,
+        }
+
+    # Analysis summary
+    analysis_summary = AnalysisSummary()
+    if static_analysis:
+        summary = static_analysis.get("summary", {})
+        analysis_summary.total_functions = summary.get("total_functions", 0)
+        analysis_summary.total_variables = summary.get("total_variables", 0)
+        analysis_summary.total_loops = summary.get("total_loops", 0)
+        analysis_summary.total_conditionals = summary.get("total_conditionals", 0)
+        analysis_summary.has_recursion = summary.get("has_recursion", False)
+    if dynamic_analysis:
+        analysis_summary.execution_successful = dynamic_analysis.get("execution_successful")
+        analysis_summary.max_stack_depth = dynamic_analysis.get("max_stack_depth")
+
+    agents_used = ["analyzer", "question", "answer", "explanation"]
+    if state.get("evaluation"):
+        agents_used.append("judge")
+
+    metadata = GenerationMetadata(
+        total_generated=len(questions_complete),
+        total_filtered=0,
+        total_returned=len(api_questions),
+        applicable_templates=1,
+        execution_successful=dynamic_analysis.get("execution_successful", True)
+            if dynamic_analysis else True,
+        execution_time_ms=state.get("execution_time_ms", 0.0),
+        rag_used=rag_used,
+        agents_used=agents_used,
+    )
+
+    return CodeSubmissionResponse(
+        submission_id=submission_id,
+        questions=api_questions,
+        metadata=metadata,
+        analysis_summary=analysis_summary,
+        errors=errors,
+        warnings=warnings,
+    )
 
 
 @router.get("/health", response_model=HealthResponse, tags=["System"])
 def health_check():
-    """
-    Health check endpoint.
-
-    Returns the status of the API and its components.
-    """
+    """Health check endpoint."""
     try:
-        # Quick test of components
         from analyzers.static_analyzer import StaticAnalyzer
         from analyzers.dynamic_analyzer import DynamicAnalyzer
         from question_engine.templates import get_registry
@@ -101,18 +187,19 @@ def health_check():
 
         return HealthResponse(
             status="healthy",
-            version="1.0.0",
+            version="2.0.0",
             components={
                 "static_analyzer": "ok",
                 "dynamic_analyzer": "ok",
                 "template_system": "ok",
-                "templates_loaded": str(len(registry.templates))
+                "pipeline": "langgraph",
+                "templates_loaded": str(len(registry.templates)),
             }
         )
     except Exception as e:
         return HealthResponse(
             status="unhealthy",
-            version="1.0.0",
+            version="2.0.0",
             components={"error": str(e)}
         )
 
@@ -125,12 +212,14 @@ def health_check():
 )
 def submit_code(request: CodeSubmissionRequest, db: Session = Depends(get_db)):
     """
-    Submit code and generate questions.
+    Submit code and generate questions via the LangGraph multi-agent pipeline.
 
-    This endpoint:
-    1. Analyzes the submitted code (static + dynamic)
-    2. Generates questions based on the code
-    3. Returns questions with metadata
+    The pipeline runs 4 agents in sequence:
+    1. Analyzer Agent — static + dynamic analysis
+    2. Question Agent — generates question text
+    3. Answer Agent — generates correct answers + distractors
+    4. Explanation Agent — generates answer explanations
+    (Judge Agent runs in the same graph after explanations)
 
     **Example Request:**
     ```json
@@ -140,122 +229,59 @@ def submit_code(request: CodeSubmissionRequest, db: Session = Depends(get_db)):
         "strategy": "diverse"
     }
     ```
-
-    **Example Response:**
-    Returns a list of generated questions with metadata about the analysis.
     """
     try:
-        # Create generation config from request
-        # Note: strategy is handled via AI prompts, not config parameter
-        config = GenerationConfig(
-            max_questions=request.max_questions
+        from question_engine.graph import run_pipeline
+
+        config = _build_config(request)
+
+        # Run the LangGraph pipeline
+        final_state = run_pipeline(
+            source_code=request.code,
+            max_questions=request.max_questions,
+            lecture_slides=request.lecture_slides,
+            config=config,
         )
 
-        # Apply filters if provided.
-        # include_* hints the AI prompt; allowed_* hard-filters after generation.
-        if request.allowed_levels:
-            config.include_levels = [l.value for l in request.allowed_levels]
-            config.allowed_levels = {QuestionLevel(l.value) for l in request.allowed_levels}
-
-        if request.allowed_types:
-            config.include_types = [t.value for t in request.allowed_types]
-
-        if request.allowed_difficulties:
-            config.include_difficulties = list(request.allowed_difficulties)
-            config.allowed_difficulties = set(request.allowed_difficulties)
-
-        # Generate questions
-        generator = QuestionGenerator(config)
-        result = generator.generate(request.code, request.test_inputs)
-
-        # Generate unique submission ID
-        submission_id = f"sub_{uuid.uuid4().hex[:12]}"
-
-        # Convert questions to API format
-        api_questions = []
-        for i, question in enumerate(result.questions):
-            question_id = f"q_{uuid.uuid4().hex[:12]}"
-
-            # Convert answer choices
-            answer_choices = [
-                AnswerChoice(
-                    text=choice.text,
-                    is_correct=choice.is_correct,
-                    explanation=choice.explanation
-                )
-                for choice in question.answer_choices
-            ]
-
-            api_question = Question(
-                id=question_id,
-                template_id=question.template_id,
-                question_text=question.question_text,
-                question_type=QuestionTypeEnum(question.question_type.value),
-                question_level=QuestionLevelEnum(question.question_level.value),
-                answer_type=question.answer_type.value,
-                correct_answer=question.correct_answer,
-                answer_choices=answer_choices,
-                context=question.context,
-                explanation=question.explanation,
-                difficulty=question.difficulty
+        # Check for fatal analysis errors
+        errors = final_state.get("analysis_errors", [])
+        if errors and not final_state.get("questions_complete"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Code analysis failed: {'; '.join(errors)}"
             )
 
-            api_questions.append(api_question)
+        submission_id = f"sub_{uuid.uuid4().hex[:12]}"
 
-            # Store question for later answer checking
-            questions_store[question_id] = {
-                "submission_id": submission_id,
-                "question": question,
-                "api_question": api_question
-            }
+        response = _state_to_response(submission_id, final_state, request)
 
-        # Create metadata
-        metadata = GenerationMetadata(
-            total_generated=result.total_generated,
-            total_filtered=result.total_filtered,
-            total_returned=len(result.questions),
-            applicable_templates=result.applicable_templates,
-            execution_successful=result.execution_successful,
-            execution_time_ms=result.execution_time_ms
-        )
+        # Persist to database using a compat result dict
+        try:
+            db_crud.save_submission(
+                db,
+                submission_id,
+                request.code,
+                final_state,
+                response.questions,
+                response.metadata,
+            )
+        except Exception as db_err:
+            # DB persistence failure is non-fatal
+            import logging
+            logging.getLogger(__name__).warning("DB persistence failed: %s", db_err)
 
-        # Create analysis summary
-        analysis_summary = AnalysisSummary()
-        if result.static_analysis:
-            summary = result.static_analysis.get('summary', {})
-            analysis_summary.total_functions = summary.get('total_functions', 0)
-            analysis_summary.total_variables = summary.get('total_variables', 0)
-            analysis_summary.total_loops = summary.get('total_loops', 0)
-            analysis_summary.total_conditionals = summary.get('total_conditionals', 0)
-            analysis_summary.has_recursion = summary.get('has_recursion', False)
-
-        if result.dynamic_analysis:
-            analysis_summary.execution_successful = result.dynamic_analysis.get('execution_successful')
-            analysis_summary.max_stack_depth = result.dynamic_analysis.get('max_stack_depth')
-
-        # Persist to database
-        db_crud.save_submission(db, submission_id, request.code, result, api_questions, metadata)
-
-        # Store submission
+        # Store in-memory for answer checking and retrieval
         submissions_store[submission_id] = {
             "code": request.code,
-            "questions": api_questions,
-            "result": result,
-            "metadata": metadata
+            "questions": response.questions,
+            "state": final_state,
+            "metadata": response.metadata,
         }
-
-        # Create response
-        response = CodeSubmissionResponse(
-            submission_id=submission_id,
-            questions=api_questions,
-            metadata=metadata,
-            analysis_summary=analysis_summary,
-            errors=result.errors,
-            warnings=result.warnings
-        )
 
         return response
 
+    except HTTPException:
+        raise
     except SyntaxError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -274,22 +300,7 @@ def submit_code(request: CodeSubmissionRequest, db: Session = Depends(get_db)):
     tags=["Answers"]
 )
 def submit_answer(request: AnswerSubmissionRequest):
-    """
-    Submit an answer to a question and get feedback.
-
-    **Example Request:**
-    ```json
-    {
-        "submission_id": "sub_abc123",
-        "question_id": "q_xyz789",
-        "answer": "factorial"
-    }
-    ```
-
-    **Example Response:**
-    Returns feedback indicating if the answer is correct with an explanation.
-    """
-    # Check if question exists
+    """Submit an answer to a question and get feedback."""
     if request.question_id not in questions_store:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -298,57 +309,43 @@ def submit_answer(request: AnswerSubmissionRequest):
 
     question_data = questions_store[request.question_id]
 
-    # Verify submission ID matches
     if question_data["submission_id"] != request.submission_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Submission ID does not match question"
         )
 
-    question = question_data["question"]
-    api_question = question_data["api_question"]
+    correct_answer = question_data["correct_answer"]
+    question_type = question_data["question_type"]
+    explanation_text = question_data.get("explanation", "")
 
-    # Check answer based on question type
     is_correct = False
-    explanation = ""
 
-    if api_question.question_type == QuestionTypeEnum.MULTIPLE_CHOICE:
-        # For multiple choice, check if answer matches correct choice
-        if isinstance(request.answer, str):
-            is_correct = request.answer == str(question.correct_answer)
-            if is_correct:
-                explanation = f"Correct! {question.explanation or ''}"
-            else:
-                explanation = f"Incorrect. The correct answer is: {question.correct_answer}. {question.explanation or ''}"
-
-    elif api_question.question_type == QuestionTypeEnum.NUMERIC:
-        # For numeric, check if values are close enough
+    if question_type == QuestionTypeEnum.NUMERIC:
         try:
-            user_answer = float(request.answer)
-            correct_answer = float(question.correct_answer)
-            is_correct = abs(user_answer - correct_answer) < 0.0001
-            if is_correct:
-                explanation = f"Correct! {question.explanation or ''}"
-            else:
-                explanation = f"Incorrect. The correct answer is: {correct_answer}. {question.explanation or ''}"
+            user_val = float(request.answer)
+            correct_val = float(correct_answer)
+            is_correct = abs(user_val - correct_val) < 0.0001
         except (ValueError, TypeError):
-            explanation = "Invalid numeric answer format"
-
+            pass
     else:
-        # For other types, basic string comparison
-        is_correct = str(request.answer) == str(question.correct_answer)
-        explanation = "Answer recorded" if is_correct else f"The expected answer is: {question.correct_answer}"
+        is_correct = str(request.answer).strip() == str(correct_answer).strip()
+
+    if is_correct:
+        explanation = f"Correct! {explanation_text}".strip()
+    else:
+        explanation = f"Incorrect. The correct answer is: {correct_answer}. {explanation_text}".strip()
 
     feedback = AnswerFeedback(
         is_correct=is_correct,
         explanation=explanation,
-        correct_answer=question.correct_answer if not is_correct else None
+        correct_answer=correct_answer if not is_correct else None,
     )
 
     return AnswerSubmissionResponse(
         submission_id=request.submission_id,
         question_id=request.question_id,
-        feedback=feedback
+        feedback=feedback,
     )
 
 
@@ -358,15 +355,7 @@ def submit_answer(request: AnswerSubmissionRequest):
     tags=["Questions"]
 )
 def get_submission(submission_id: str):
-    """
-    Retrieve a previous code submission and its questions.
-
-    **Path Parameters:**
-    - `submission_id`: The ID of the submission to retrieve
-
-    **Example Response:**
-    Returns the original submission with all its questions.
-    """
+    """Retrieve a previous code submission and its questions."""
     if submission_id not in submissions_store:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -374,29 +363,29 @@ def get_submission(submission_id: str):
         )
 
     submission = submissions_store[submission_id]
-    result = submission["result"]
+    state = submission.get("state", {})
+    static_analysis = state.get("static_analysis") or {}
+    dynamic_analysis = state.get("dynamic_analysis") or {}
 
-    # Reconstruct response
     analysis_summary = AnalysisSummary()
-    if result.static_analysis:
-        summary = result.static_analysis.get('summary', {})
-        analysis_summary.total_functions = summary.get('total_functions', 0)
-        analysis_summary.total_variables = summary.get('total_variables', 0)
-        analysis_summary.total_loops = summary.get('total_loops', 0)
-        analysis_summary.total_conditionals = summary.get('total_conditionals', 0)
-        analysis_summary.has_recursion = summary.get('has_recursion', False)
-
-    if result.dynamic_analysis:
-        analysis_summary.execution_successful = result.dynamic_analysis.get('execution_successful')
-        analysis_summary.max_stack_depth = result.dynamic_analysis.get('max_stack_depth')
+    if static_analysis:
+        summary = static_analysis.get("summary", {})
+        analysis_summary.total_functions = summary.get("total_functions", 0)
+        analysis_summary.total_variables = summary.get("total_variables", 0)
+        analysis_summary.total_loops = summary.get("total_loops", 0)
+        analysis_summary.total_conditionals = summary.get("total_conditionals", 0)
+        analysis_summary.has_recursion = summary.get("has_recursion", False)
+    if dynamic_analysis:
+        analysis_summary.execution_successful = dynamic_analysis.get("execution_successful")
+        analysis_summary.max_stack_depth = dynamic_analysis.get("max_stack_depth")
 
     return CodeSubmissionResponse(
         submission_id=submission_id,
         questions=submission["questions"],
         metadata=submission["metadata"],
         analysis_summary=analysis_summary,
-        errors=result.errors,
-        warnings=result.warnings
+        errors=state.get("analysis_errors", []),
+        warnings=state.get("analysis_warnings", []),
     )
 
 
@@ -407,18 +396,11 @@ def get_submission(submission_id: str):
 )
 def evaluate_submission(submission_id: str):
     """
-    Evaluate the quality of all questions generated for a submission.
+    Retrieve the LLM judge evaluation for a submission.
 
-    Calls the LLM judge once per question to score it on 5 pedagogical dimensions:
-    - **accuracy** (2x weight): Is the correct answer verifiably correct?
-    - **clarity**: Is the question unambiguous?
-    - **pedagogical_value** (2x weight): Does it test genuine understanding?
-    - **code_specificity**: Is it specific to this code?
-    - **difficulty_calibration**: Does the difficulty label match cognitive demand?
-
-    Questions with `overall_score < 3.0` or `accuracy < 3` are flagged.
-
-    **Note:** This endpoint makes N API calls (one per question) and is on-demand only.
+    The judge agent runs as part of the pipeline after question generation.
+    This endpoint returns the stored evaluation results.
+    If the evaluation is not yet available, it runs the judge synchronously.
     """
     if submission_id not in submissions_store:
         raise HTTPException(
@@ -427,47 +409,49 @@ def evaluate_submission(submission_id: str):
         )
 
     submission = submissions_store[submission_id]
+    state = submission.get("state", {})
+    evaluation = state.get("evaluation")
 
-    try:
-        from question_engine.judge import LLMJudge, JudgeConfig
-        judge_config = JudgeConfig()
-        judge = LLMJudge(judge_config)
-
-        # Add submission_id to the data dict for the result
-        submission_data = dict(submission)
-        submission_data["submission_id"] = submission_id
-
-        result = judge.evaluate_submission(submission_data)
-
-        # Convert to Pydantic response model
-        evaluations = [
-            QuestionEvaluationResponse(
-                question_id=e.question_id,
-                question_text=e.question_text,
-                scores=e.scores,
-                overall_score=e.overall_score,
-                explanation=e.explanation,
-                issues=e.issues,
-                is_flagged=e.is_flagged,
+    # If no evaluation stored (e.g. cache hit), run judge on demand
+    if not evaluation:
+        try:
+            from question_engine.agents.judge_agent import judge_agent_node
+            judge_result = judge_agent_node(state)
+            evaluation = judge_result.get("evaluation")
+            # Update stored state
+            state["evaluation"] = evaluation
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Evaluation failed: {str(e)}"
             )
-            for e in result.question_evaluations
-        ]
 
-        return EvaluationResultResponse(
-            submission_id=result.submission_id,
-            question_evaluations=evaluations,
-            aggregate=result.aggregate,
-            tokens_used=result.tokens_used,
-            evaluation_time_ms=result.evaluation_time_ms,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
+    if not evaluation:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Evaluation failed: {str(e)}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not available for this submission"
         )
+
+    question_evaluations = [
+        QuestionEvaluationResponse(
+            question_id=e.get("question_id", ""),
+            question_text=e.get("question_text", ""),
+            scores=e.get("scores", {}),
+            overall_score=e.get("overall_score", 0.0),
+            explanation=e.get("explanation", ""),
+            issues=e.get("issues", []),
+            is_flagged=e.get("is_flagged", False),
+        )
+        for e in evaluation.get("question_evaluations", [])
+    ]
+
+    return EvaluationResultResponse(
+        submission_id=submission_id,
+        question_evaluations=question_evaluations,
+        aggregate=evaluation.get("aggregate", {}),
+        tokens_used=evaluation.get("tokens_used", 0),
+        evaluation_time_ms=evaluation.get("evaluation_time_ms", 0.0),
+    )
 
 
 @router.get(
@@ -475,34 +459,22 @@ def evaluate_submission(submission_id: str):
     tags=["System"]
 )
 def list_templates():
-    """
-    List all available question templates.
-
-    Returns information about each template including:
-    - Template ID
-    - Name and description
-    - Question type and level
-    - Difficulty
-
-    **Example Response:**
-    ```json
-    {
+    """List available question generation information."""
+    return {
         "templates": [
             {
-                "id": "recursive_function_detection",
-                "name": "Recursive Function Detection",
-                "description": "Identify recursive functions",
+                "id": "langgraph_pipeline",
+                "name": "LangGraph Multi-Agent Pipeline",
+                "description": (
+                    "Uses a 4-agent LangGraph pipeline: "
+                    "Analyzer → Question → Answer → Explanation. "
+                    "Optional RAG with lecture slides."
+                ),
                 "type": "multiple_choice",
-                "level": "block",
-                "difficulty": "medium"
+                "level": "all",
+                "difficulty": "adaptive",
+                "agents": ["analyzer", "question", "answer", "explanation", "judge"],
             }
-        ]
+        ],
+        "total": 1,
     }
-    ```
-    """
-    from question_engine.templates import get_registry
-
-    registry = get_registry()
-    templates = registry.list_templates()
-
-    return {"templates": templates, "total": len(templates)}

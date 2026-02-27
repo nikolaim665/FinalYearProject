@@ -13,7 +13,7 @@ def save_submission(
     db: Session,
     submission_id: str,
     code: str,
-    result,          # GenerationResult (internal)
+    result,          # QLCState dict (LangGraph) or GenerationResult (legacy)
     api_questions,   # list[Question]  (Pydantic API model)
     metadata,        # GenerationMetadata (Pydantic)
 ) -> None:
@@ -22,13 +22,21 @@ def save_submission(
 
     Each multiple-choice question gets 1 correct row and up to 3 distractor rows
     in answer_choices, enabling later SQL distractor-quality analysis.
+
+    Accepts both the legacy GenerationResult object and the new QLCState dict.
     """
+    # Extract errors from either dict (QLCState) or object (GenerationResult)
+    if isinstance(result, dict):
+        errors_list = result.get("analysis_errors", [])
+    else:
+        errors_list = getattr(result, "errors", []) or []
+
     db_submission = Submission(
         id=submission_id,
         code=code,
         execution_time_ms=metadata.execution_time_ms,
         total_questions=len(api_questions),
-        errors=json.dumps(result.errors) if result.errors else None,
+        errors=json.dumps(errors_list) if errors_list else None,
     )
     db.add(db_submission)
 

@@ -1,44 +1,59 @@
 """
 Question Template System (Compatibility Layer)
 
-This module provides backward compatibility by re-exporting
-the data structures from the AI generator.
+The actual question generation is now handled by the LangGraph
+multi-agent pipeline in graph.py.
 
-The actual question generation is now handled by ai_generator.py
-using OpenAI GPT-5.2.
+This module provides backward-compatible enums and a minimal
+TemplateRegistry for the /health and /templates endpoints.
 """
 
-# Re-export data structures from AI generator for backward compatibility
-from question_engine.ai_generator import (
-    QuestionLevel,
-    QuestionType,
-    AnswerType,
-    QuestionAnswer,
-    GeneratedQuestion,
-)
+from enum import Enum
+
+
+class QuestionLevel(str, Enum):
+    ATOM = "atom"
+    BLOCK = "block"
+    RELATIONAL = "relational"
+    MACRO = "macro"
+
+
+class QuestionType(str, Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE = "true_false"
+    NUMERIC = "numeric"
+
+
+class AnswerType(str, Enum):
+    STATIC = "static"
+    DYNAMIC = "dynamic"
+    CHOICE = "choice"
 
 
 class TemplateRegistry:
     """
-    Minimal template registry for backward compatibility.
-    The actual question generation is now handled by AI.
+    Minimal template registry.
+    The actual question generation is now handled by the LangGraph pipeline.
     """
 
     def __init__(self):
-        self.templates = []
-
-    def list_templates(self):
-        """Return info about the AI-powered generation system."""
-        return [
+        self.templates = [
             {
-                'id': 'ai_powered_generator',
-                'name': 'AI-Powered Question Generator',
-                'description': 'Uses OpenAI GPT-5.2 to generate contextual comprehension questions',
-                'type': 'all',
-                'level': 'all',
-                'difficulty': 'adaptive'
+                "id": "langgraph_pipeline",
+                "name": "LangGraph Multi-Agent Pipeline",
+                "description": (
+                    "4-agent pipeline: Analyzer → Question → Answer → Explanation. "
+                    "Optional RAG with lecture slides."
+                ),
+                "type": "multiple_choice",
+                "level": "all",
+                "difficulty": "adaptive",
             }
         ]
+
+    def list_templates(self):
+        """Return info about the LangGraph pipeline."""
+        return self.templates
 
 
 # Global registry instance
