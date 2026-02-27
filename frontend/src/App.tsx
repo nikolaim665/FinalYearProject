@@ -14,7 +14,6 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import CodeEditor from "@/components/CodeEditor";
 import QuestionPanel from "@/components/QuestionPanel";
-import ResultsSummary from "@/components/ResultsSummary";
 import EvaluationPanel from "@/components/EvaluationPanel";
 import { submitCode, checkHealth } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -250,14 +249,6 @@ function App() {
             <div className="h-[600px]">
               <CodeEditor onSubmit={handleCodeSubmit} loading={loading} />
             </div>
-            {submission && (
-              <ResultsSummary
-                metadata={submission.metadata}
-                analysisSummary={submission.analysis_summary}
-                errors={submission.errors}
-                warnings={submission.warnings}
-              />
-            )}
             {submission && (
               <EvaluationPanel
                 questions={submission.questions}
