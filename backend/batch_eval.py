@@ -136,6 +136,38 @@ def print_summary(label: str, summary: dict) -> None:
     print(f"  {'Flagged':<28} {summary.get('n_flagged', '?')}/{summary.get('n_questions', '?')}")
 
 
+def print_questions_and_evals(state: dict, eval_result: dict) -> None:
+    """Print each generated question, its answer choices, and judge scores."""
+    questions = state.get("questions_complete", [])
+    q_evals = {e["question_id"]: e for e in eval_result.get("question_evaluations", [])}
+
+    for idx, q in enumerate(questions, 1):
+        q_id = q.get("id", f"q_{idx}")
+        flagged = q_evals.get(q_id, {}).get("is_flagged", False)
+        flag_mark = " 🚩" if flagged else ""
+
+        print(f"\n  ── Q{idx}{flag_mark} [{q.get('question_level','?').upper()} / "
+              f"{q.get('difficulty','?')}] ──────────────────")
+        print(f"  {q.get('question_text', '')}")
+
+        for choice in q.get("answer_choices", []):
+            marker = "✓" if choice.get("is_correct") else "✗"
+            print(f"    {marker} {choice.get('text', '')}")
+
+        ev = q_evals.get(q_id)
+        if ev:
+            scores = ev.get("scores", {})
+            score_str = "  ".join(
+                f"{d[:3].upper()}={scores.get(d, '?')}" for d in SCORE_DIMS
+            )
+            print(f"  Judge: overall={ev.get('overall_score','?')}  |  {score_str}")
+            if ev.get("explanation"):
+                print(f"  Note : {ev['explanation']}")
+            if ev.get("issues"):
+                print(f"  Issues: {'; '.join(ev['issues'])}")
+
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -201,6 +233,7 @@ def main():
 
             summary = summarise_evaluation(eval_result)
             print_summary(label, summary)
+            print_questions_and_evals(state, eval_result)
             print(f"  Time: {elapsed}s")
 
             all_results.append({
