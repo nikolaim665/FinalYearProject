@@ -45,7 +45,13 @@
       "Bash(/home/moschenn/dev/FinalYearProject/.venv/bin/python3:*)",
       "Bash(.venv/bin/python3:*)",
       "Bash(PYTHONPATH=backend .venv/bin/python3:*)",
-      "Bash(PYTHONPATH=. ../.venv/bin/python3:*)"
+      "Bash(PYTHONPATH=. ../.venv/bin/python3:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(node:*)",
+      "Bash(sudo docker:*)",
+      "Skill(ralph-loop:cancel-ralph)"
     ],
     "deny": [],
     "ask": []

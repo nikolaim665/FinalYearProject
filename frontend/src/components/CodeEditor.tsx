@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Code2,
   Loader2,
+  BookOpen,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { CodeSubmissionRequest } from "@/lib/api-types";
@@ -15,6 +16,7 @@ import type { CodeSubmissionRequest } from "@/lib/api-types";
 interface CodeEditorProps {
   onSubmit: (data: CodeSubmissionRequest) => void;
   loading: boolean;
+  lectureSlides?: string | null;
 }
 
 const DEFAULT_CODE = `def factorial(n):
@@ -27,7 +29,7 @@ result = factorial(5)
 print(f"Factorial of 5 is {result}")
 `;
 
-const CodeEditor = ({ onSubmit, loading }: CodeEditorProps) => {
+const CodeEditor = ({ onSubmit, loading, lectureSlides }: CodeEditorProps) => {
   const { theme } = useTheme();
   const [code, setCode] = useState(DEFAULT_CODE);
   const [config, setConfig] = useState({
@@ -52,6 +54,10 @@ const CodeEditor = ({ onSubmit, loading }: CodeEditorProps) => {
         alert("Invalid JSON in test inputs");
         return;
       }
+    }
+
+    if (lectureSlides) {
+      submissionData.lecture_slides = lectureSlides;
     }
 
     onSubmit(submissionData);
@@ -216,6 +222,12 @@ const CodeEditor = ({ onSubmit, loading }: CodeEditorProps) => {
             <span className="text-xs text-slate-500 dark:text-slate-400">
               {code.split("\n").length} lines
             </span>
+            {lectureSlides && (
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
+                <BookOpen className="w-3 h-3" />
+                RAG
+              </span>
+            )}
           </div>
           <button
             onClick={handleSubmit}

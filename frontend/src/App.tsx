@@ -15,6 +15,7 @@ import { Toaster } from "@/components/ui/sonner";
 import CodeEditor from "@/components/CodeEditor";
 import QuestionPanel from "@/components/QuestionPanel";
 import EvaluationPanel from "@/components/EvaluationPanel";
+import LectureUploader from "@/components/LectureUploader";
 import { submitCode, checkHealth } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useToast } from "@/hooks/use-toast";
@@ -30,6 +31,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [submission, setSubmission] = useState<CodeSubmissionResponse | null>(null);
   const [apiStatus, setApiStatus] = useState<HealthStatus | null>(null);
+  const [lectureSlides, setLectureSlides] = useState<string | null>(null);
 
   useEffect(() => {
     const checkApiHealth = async () => {
@@ -244,11 +246,16 @@ function App() {
 
         {/* Main Grid */}
         <div className="grid gap-6 fade-in-up animation-delay-200 grid-cols-1 lg:grid-cols-[2fr_3fr]">
-          {/* Left column: Code Editor + Results Summary + Quality Evaluation */}
+          {/* Left column: Code Editor + Lecture Uploader + Quality Evaluation */}
           <div className="flex flex-col gap-6">
             <div className="h-[600px]">
-              <CodeEditor onSubmit={handleCodeSubmit} loading={loading} />
+              <CodeEditor
+                onSubmit={handleCodeSubmit}
+                loading={loading}
+                lectureSlides={lectureSlides}
+              />
             </div>
+            <LectureUploader onLectureChange={setLectureSlides} />
             {submission && (
               <EvaluationPanel
                 questions={submission.questions}
