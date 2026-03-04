@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """
-Batch Evaluation Script for QLC System
-=======================================
+Batch Evaluation Script for QLC System — MBPP Edition
+======================================================
 
-Runs the QLC pipeline on a set of sample Python snippets, evaluates all
-generated questions with the judge agent, and reports per-sample and
-aggregate averages across the whole run.
+Pulls the MBPP dataset (374 crowd-sourced beginner Python programs) from
+Hugging Face, runs the QLC pipeline on each, evaluates generated questions
+with the judge agent, and reports per-sample and aggregate averages.
 
-Usage (on the GCP VM, inside the project root):
-    # Option A — via Docker exec (no extra deps needed):
+Usage (on the GCP VM):
+    # Via Docker exec (install datasets inside container first):
+    sudo docker exec qlc-backend pip install datasets -q
     sudo docker exec qlc-backend python backend/batch_eval.py
 
-    # Option B — directly (with venv activated):
-    python backend/batch_eval.py
+    # Limit to first N samples (useful for a quick smoke-test):
+    sudo docker exec qlc-backend python backend/batch_eval.py --limit 10
 
 Results are printed to stdout and saved to batch_eval_results.json.
 """
 
+import argparse
 import json
 import sys
 import time
@@ -25,13 +27,12 @@ from statistics import mean
 from typing import Optional
 
 # ---------------------------------------------------------------------------
-# Add backend to path so imports work when run directly
+# Path / env setup
 # ---------------------------------------------------------------------------
 BACKEND_DIR = Path(__file__).parent
 sys.path.insert(0, str(BACKEND_DIR))
 sys.path.insert(0, str(BACKEND_DIR.parent))
 
-# Load .env so OPENAI_API_KEY etc. are available
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=BACKEND_DIR.parent / ".env", override=True)
 
@@ -39,11 +40,8 @@ from question_engine.graph import run_pipeline
 from question_engine.agents.judge_agent import judge_agent_node
 
 # ---------------------------------------------------------------------------
-# Sample code snippets to evaluate
-# Add / remove entries as needed.
+# Config
 # ---------------------------------------------------------------------------
-SAMPLE_CODES = []
-
 MAX_QUESTIONS_PER_SAMPLE = 5
 OUTPUT_FILE = BACKEND_DIR.parent / "batch_eval_results.json"
 
@@ -57,11 +55,54 @@ SCORE_DIMS = [
 
 
 # ---------------------------------------------------------------------------
+# MBPP loader
+# ---------------------------------------------------------------------------
+
+def load_mbpp_samples(limit: Optional[int] = None) -> list[dict]:
+    """
+    Load code samples from the MBPP Hugging Face dataset.
+
+    Each MBPP entry has:
+        task_id  : int
+        text     : natural-language problem description
+        code     : the Python solution
+        test_list: list of assert statements
+
+    We use `code` directly as the source for QLC.
+    """
+    try:
+        from datasets import load_dataset  # type: ignore
+    except ImportError:
+        print("ERROR: 'datasets' package not installed.")
+        print("  Run: pip install datasets")
+        sys.exit(1)
+
+    print("Loading MBPP dataset from Hugging Face...")
+    ds = load_dataset("mbpp", split="train", trust_remote_code=True)
+
+    samples = []
+    for row in ds:
+        code = row.get("code", "").strip()
+        if not code:
+            continue
+        samples.append({
+            "label": f"mbpp_{row['task_id']}",
+            "code": code,
+            "description": row.get("text", ""),
+        })
+        if limit and len(samples) >= limit:
+            break
+
+    print(f"Loaded {len(samples)} MBPP samples.")
+    return samples
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def evaluate_state(state: dict) -> Optional[dict]:
-    """Run judge agent if not already evaluated."""
+    """Return existing evaluation or run the judge agent."""
     if state.get("evaluation"):
         return state["evaluation"]
     result = judge_agent_node(state)
@@ -69,7 +110,6 @@ def evaluate_state(state: dict) -> Optional[dict]:
 
 
 def summarise_evaluation(eval_result: dict) -> dict:
-    """Extract per-dimension means and overall mean from an evaluation dict."""
     question_evals = eval_result.get("question_evaluations", [])
     valid = [e for e in question_evals if e.get("scores")]
     if not valid:
@@ -87,14 +127,13 @@ def summarise_evaluation(eval_result: dict) -> dict:
 
 
 def print_summary(label: str, summary: dict) -> None:
-    flagged_info = f"  Flagged: {summary.get('n_flagged', '?')}/{summary.get('n_questions', '?')}"
     print(f"\n  {'Sample':<28} {label}")
-    print(f"  {'Questions generated':<28} {summary.get('n_questions', '?')} "
+    print(f"  {'Questions':<28} {summary.get('n_questions', '?')} "
           f"(valid: {summary.get('n_valid', '?')})")
     print(f"  {'Overall score':<28} {summary.get('mean_overall', 'N/A')}")
     for dim in SCORE_DIMS:
         print(f"  {dim:<28} {summary.get(f'mean_{dim}', 'N/A')}")
-    print(flagged_info)
+    print(f"  {'Flagged':<28} {summary.get('n_flagged', '?')}/{summary.get('n_questions', '?')}")
 
 
 # ---------------------------------------------------------------------------
@@ -102,17 +141,26 @@ def print_summary(label: str, summary: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def main():
+    parser = argparse.ArgumentParser(description="QLC batch evaluation using MBPP dataset")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Max number of MBPP samples to process (default: all ~374)")
+    args = parser.parse_args()
+
+    samples = load_mbpp_samples(limit=args.limit)
+
     print("=" * 60)
-    print("QLC Batch Evaluation")
-    print(f"Samples: {len(SAMPLE_CODES)}  |  Max questions each: {MAX_QUESTIONS_PER_SAMPLE}")
+    print("QLC Batch Evaluation — MBPP Dataset")
+    print(f"Samples: {len(samples)}  |  Max questions each: {MAX_QUESTIONS_PER_SAMPLE}")
     print("=" * 60)
 
     all_results = []
     all_question_evals: list[dict] = []
 
-    for i, sample in enumerate(SAMPLE_CODES, 1):
+    for i, sample in enumerate(samples, 1):
         label = sample["label"]
-        print(f"\n[{i}/{len(SAMPLE_CODES)}] Running pipeline for: {label} ...")
+        print(f"\n[{i}/{len(samples)}] {label}")
+        if sample.get("description"):
+            print(f"  Task: {sample['description'][:80]}...")
         t0 = time.time()
 
         try:
@@ -133,13 +181,13 @@ def main():
             print_summary(label, summary)
             print(f"  Time: {elapsed}s")
 
-            record = {
+            all_results.append({
                 "label": label,
+                "description": sample.get("description", ""),
                 "elapsed_s": elapsed,
                 "summary": summary,
                 "question_evaluations": eval_result.get("question_evaluations", []),
-            }
-            all_results.append(record)
+            })
             all_question_evals.extend(eval_result.get("question_evaluations", []))
 
         except Exception as exc:
@@ -147,16 +195,24 @@ def main():
             print(f"  ✗ Failed after {elapsed}s: {exc}")
             all_results.append({"label": label, "error": str(exc), "elapsed_s": elapsed})
 
+        # Save incrementally so a crash doesn't lose progress
+        _save(all_results, {}, all_question_evals)
+
     # -----------------------------------------------------------------------
-    # Global aggregate across all samples
+    # Global aggregate
     # -----------------------------------------------------------------------
     print("\n" + "=" * 60)
     print("GLOBAL AGGREGATE ACROSS ALL SAMPLES")
     print("=" * 60)
 
     valid_all = [e for e in all_question_evals if e.get("scores")]
+    global_summary: dict = {}
+
     if valid_all:
-        global_summary: dict = {"n_total_questions": len(all_question_evals), "n_valid": len(valid_all)}
+        global_summary = {
+            "n_total_questions": len(all_question_evals),
+            "n_valid": len(valid_all),
+        }
         for dim in SCORE_DIMS:
             vals = [e["scores"][dim] for e in valid_all if dim in e.get("scores", {})]
             global_summary[f"mean_{dim}"] = round(mean(vals), 2) if vals else None
@@ -164,26 +220,26 @@ def main():
         global_summary["mean_overall"] = round(mean(overall_vals), 2) if overall_vals else None
         global_summary["n_flagged"] = sum(1 for e in all_question_evals if e.get("is_flagged"))
 
-        print(f"  Total questions: {global_summary['n_total_questions']} (valid: {global_summary['n_valid']})")
-        print(f"  Flagged:         {global_summary['n_flagged']}")
-        print(f"  Overall score:   {global_summary.get('mean_overall', 'N/A')}")
+        print(f"  Total questions : {global_summary['n_total_questions']} (valid: {global_summary['n_valid']})")
+        print(f"  Flagged         : {global_summary['n_flagged']}")
+        print(f"  Overall score   : {global_summary.get('mean_overall', 'N/A')}")
         for dim in SCORE_DIMS:
             print(f"  {dim:<30} {global_summary.get(f'mean_{dim}', 'N/A')}")
     else:
-        global_summary = {}
         print("  No valid evaluations to aggregate.")
 
-    # -----------------------------------------------------------------------
-    # Save results to JSON
-    # -----------------------------------------------------------------------
+    _save(all_results, global_summary, all_question_evals)
+    print(f"\nResults saved to: {OUTPUT_FILE}")
+    print("=" * 60)
+
+
+def _save(per_sample: list, global_summary: dict, all_evals: list) -> None:
     output = {
         "run_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "global_summary": global_summary,
-        "per_sample": all_results,
+        "per_sample": per_sample,
     }
     OUTPUT_FILE.write_text(json.dumps(output, indent=2))
-    print(f"\nResults saved to: {OUTPUT_FILE}")
-    print("=" * 60)
 
 
 if __name__ == "__main__":
