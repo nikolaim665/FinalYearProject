@@ -112,11 +112,10 @@ function App() {
                     )}
                   </div>
                   <span
-                    className={`text-sm font-medium ${
-                      apiStatus.status === "healthy"
+                    className={`text-sm font-medium ${apiStatus.status === "healthy"
                         ? "text-emerald-600 dark:text-emerald-400"
                         : "text-rose-600 dark:text-rose-400"
-                    }`}
+                      }`}
                   >
                     {apiStatus.status === "healthy" ? "Connected" : "Offline"}
                   </span>

@@ -51,7 +51,9 @@
       "Bash(npx vite:*)",
       "Bash(node:*)",
       "Bash(sudo docker:*)",
-      "Skill(ralph-loop:cancel-ralph)"
+      "Skill(ralph-loop:cancel-ralph)",
+      "Bash(pip show:*)",
+      "Bash(pip3 install:*)"
     ],
     "deny": [],
     "ask": []

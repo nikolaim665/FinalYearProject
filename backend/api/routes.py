@@ -5,7 +5,8 @@ Defines all REST API endpoints for the QLC system.
 Now powered by the LangGraph multi-agent pipeline.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Dict
 import uuid
@@ -452,6 +453,29 @@ def evaluate_submission(submission_id: str):
         tokens_used=evaluation.get("tokens_used", 0),
         evaluation_time_ms=evaluation.get("evaluation_time_ms", 0.0),
     )
+
+
+@router.get("/logs/stream", tags=["System"])
+async def stream_logs(request: Request):
+    """Stream backend logs as Server-Sent Events."""
+    from api.log_handler import log_event_generator
+    return StreamingResponse(
+        log_event_generator(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/logs", tags=["System"])
+def get_logs(limit: int = 200):
+    """Get recent backend log entries."""
+    from api.log_handler import log_buffer
+    entries = list(log_buffer)
+    return {"logs": entries[-limit:], "total": len(entries)}
 
 
 @router.get(

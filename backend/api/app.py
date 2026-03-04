@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+import logging
 import time
 import sys
 from pathlib import Path
@@ -22,6 +23,24 @@ sys.path.insert(0, str(backend_path))
 
 from api.routes import router
 from api.models import ErrorResponse
+
+# ---------------------------------------------------------------------------
+# Attach MemoryLogHandler at module level.
+#
+# uvicorn calls logging.config.dictConfig() during startup which resets the
+# root logger and removes any handlers added after import.  By attaching here
+# we survive that reset; the startup event below re-attaches as a safety net.
+# ---------------------------------------------------------------------------
+def _attach_memory_handler() -> None:
+    from api.log_handler import get_handler
+    handler = get_handler()
+    root = logging.getLogger()
+    if handler not in root.handlers:
+        root.addHandler(handler)
+    if root.level == logging.NOTSET:
+        root.setLevel(logging.DEBUG)
+
+_attach_memory_handler()
 
 # Create FastAPI app
 app = FastAPI(
@@ -143,6 +162,9 @@ def read_root():
 @app.on_event("startup")
 async def startup_event():
     """Run on application startup."""
+    # Re-attach the MemoryLogHandler in case uvicorn's dictConfig removed it
+    _attach_memory_handler()
+
     from database import init_db, DATABASE_URL
     init_db()
 
