@@ -239,6 +239,7 @@ def main():
             all_results.append({
                 "label": label,
                 "description": sample.get("description", ""),
+                "code": sample["code"],
                 "elapsed_s": elapsed,
                 "summary": summary,
                 "question_evaluations": eval_result.get("question_evaluations", []),
