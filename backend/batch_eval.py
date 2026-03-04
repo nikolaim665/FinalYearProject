@@ -153,11 +153,33 @@ def main():
     print(f"Samples: {len(samples)}  |  Max questions each: {MAX_QUESTIONS_PER_SAMPLE}")
     print("=" * 60)
 
-    all_results = []
+    # ------------------------------------------------------------------
+    # Resume: load any previously completed results so we skip them
+    # ------------------------------------------------------------------
+    all_results: list[dict] = []
     all_question_evals: list[dict] = []
+    already_done: set[str] = set()
+
+    if OUTPUT_FILE.exists():
+        try:
+            prev = json.loads(OUTPUT_FILE.read_text())
+            for rec in prev.get("per_sample", []):
+                if "error" not in rec:          # only skip successful ones
+                    all_results.append(rec)
+                    all_question_evals.extend(rec.get("question_evaluations", []))
+                    already_done.add(rec["label"])
+            if already_done:
+                print(f"Resuming — skipping {len(already_done)} already-completed samples.")
+        except Exception:
+            pass  # corrupt file; start fresh
 
     for i, sample in enumerate(samples, 1):
         label = sample["label"]
+
+        if label in already_done:
+            print(f"[{i}/{len(samples)}] {label} — already done, skipping.")
+            continue
+
         print(f"\n[{i}/{len(samples)}] {label}")
         if sample.get("description"):
             print(f"  Task: {sample['description'][:80]}...")
