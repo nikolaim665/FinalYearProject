@@ -74,6 +74,10 @@ def build_question_rows(questions):
     return "".join(parts)
 
 
+def escape_html(text):
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def build_sample_rows(samples):
     parts = []
     for s in samples:
@@ -101,6 +105,22 @@ def build_sample_rows(samples):
         q_rows = build_question_rows(s["question_evaluations"])
         desc = s["description"][:120] + ("..." if len(s["description"]) > 120 else "")
 
+        code_escaped = escape_html(s.get("code", ""))
+        label = s["label"]
+        code_section = (
+            '<div style="margin-bottom:16px">'
+            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+            '<span style="font-size:13px;font-weight:600;color:#374151">Source Code</span>'
+            '<button onclick="toggleCode(\'{label}\')" id="codebtn-{label}" '
+            'style="background:#e0e7ff;color:#4338ca;border:none;border-radius:4px;'
+            'padding:2px 8px;cursor:pointer;font-size:11px">Show</button>'
+            '</div>'
+            '<pre id="code-{label}" style="display:none;background:#1e293b;color:#e2e8f0;'
+            'border-radius:8px;padding:16px;font-size:12px;overflow-x:auto;'
+            'line-height:1.6;margin:0;white-space:pre">{code}</pre>'
+            '</div>'
+        ).format(label=label, code=code_escaped)
+
         parts.append(
             '<tr class="sample-row" data-label="{label}">'
             '<td style="font-weight:600;color:#6366f1">{label}</td>'
@@ -113,6 +133,7 @@ def build_sample_rows(samples):
             '</tr>'
             '<tr id="details-{label}" style="display:none">'
             '<td colspan="10" style="background:#f8fafc;padding:16px">'
+            '{code_section}'
             '<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#374151">Question Evaluations</div>'
             '<table style="width:100%;border-collapse:collapse;font-size:12px">'
             '<tr style="background:#f1f5f9">'
@@ -126,12 +147,13 @@ def build_sample_rows(samples):
             '</table>'
             '</td>'
             '</tr>'.format(
-                label=s["label"],
+                label=label,
                 desc=desc,
                 nq=sm["n_questions"],
                 metrics=metric_cells,
                 overall=bar(sm["mean_overall"]),
                 flags=flag_badge,
+                code_section=code_section,
                 q_header=q_header_cells,
                 q_rows=q_rows,
             )
@@ -235,6 +257,13 @@ new Chart(document.getElementById('chart'), {{
 function toggleDetails(label) {{
   const row = document.getElementById('details-' + label);
   row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}}
+function toggleCode(label) {{
+  const pre = document.getElementById('code-' + label);
+  const btn = document.getElementById('codebtn-' + label);
+  const visible = pre.style.display !== 'none';
+  pre.style.display = visible ? 'none' : 'block';
+  btn.textContent = visible ? 'Show' : 'Hide';
 }}
 function filterTable() {{
   const q = document.getElementById('searchInput').value.toLowerCase();

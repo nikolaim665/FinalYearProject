@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY backend/ ./backend/
 COPY run_api.py .
+COPY eval_report.html .
 
 # Create non-root user and persistent data directory
 RUN useradd --create-home --shell /bin/bash appuser && \

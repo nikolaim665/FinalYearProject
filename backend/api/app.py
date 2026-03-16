@@ -10,7 +10,7 @@ load_dotenv(dotenv_path=_Path(__file__).parent.parent.parent / ".env", override=
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
 import logging
 import time
@@ -133,6 +133,20 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(router, prefix="/api", tags=["API"])
+
+
+# Eval report endpoint
+_REPORT_PATH = Path(__file__).parent.parent.parent / "eval_report.html"
+
+@app.get("/report", tags=["Report"], response_class=HTMLResponse)
+def get_report():
+    """Serve the batch evaluation HTML report."""
+    if not _REPORT_PATH.exists():
+        return HTMLResponse(
+            content="<h2>Report not found. Run <code>python show_eval.py</code> to generate it.</h2>",
+            status_code=404,
+        )
+    return FileResponse(_REPORT_PATH, media_type="text/html")
 
 
 # Root endpoint

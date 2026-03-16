@@ -53,7 +53,8 @@
       "Bash(sudo docker:*)",
       "Skill(ralph-loop:cancel-ralph)",
       "Bash(pip show:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []
