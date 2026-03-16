@@ -6,6 +6,8 @@ import type {
   HealthStatus,
 } from "./api-types";
 
+export type { NodeSummary } from "./api-types";
+
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {

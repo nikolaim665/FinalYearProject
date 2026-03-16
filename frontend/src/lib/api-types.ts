@@ -1,5 +1,20 @@
 // API types matching the FastAPI backend
 
+export interface NodeSummary {
+  // analyzer_agent fields
+  functions?: number;
+  variables?: number;
+  loops?: number;
+  warnings?: number;
+  // question/answer/explanation_agent fields
+  count?: number;
+  // judge_agent fields
+  mean_score?: number;
+  flagged?: number;
+  // rag_retrieve fields
+  context_found?: boolean;
+}
+
 export interface AnswerChoice {
   text: string;
   is_correct: boolean;
